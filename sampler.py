@@ -11,8 +11,6 @@ path = os.path.dirname(__file__)
 S = np.array(numpy.loadtxt(path + "/S.txt"))
 K = np.array(numpy.loadtxt(path + "/K.txt"))
 rays = np.array(numpy.loadtxt(path + "/rays.txt"))
-q0 = np.array(numpy.loadtxt(path + "/q0.txt"))
-q0 = q0.at[np.arange(50)[np.array([0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], dtype=bool)]].add(-5)
 
 cC = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0])
 cA = np.array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 2, 1, 2, 1])
@@ -86,7 +84,7 @@ def make_hamiltonian(T, U, Cns):
 @jax.jit
 def propose_p(q, prng_subkey):
     
-    p = jax.random.normal(prng_subkey, shape=q0.shape)
+    p = jax.random.normal(prng_subkey, shape=q.shape)
     u, s, vh = jax.numpy.linalg.svd(jac_cons(q))
     return vh[17:, :].T@(vh[17:, :]@p)
 	
