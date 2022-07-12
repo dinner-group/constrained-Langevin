@@ -2,13 +2,16 @@ import jax
 import jax.numpy as np
 import numpy
 import time
+import os
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
-S = np.array(numpy.loadtxt("S.txt"))
-K = np.array(numpy.loadtxt("K.txt"))
-rays = np.array(numpy.loadtxt("rays.txt"))
-q0 = np.array(numpy.loadtxt("q0.txt"))
+path = os.path.dirname(__file__)
+
+S = np.array(numpy.loadtxt(path + "/S.txt"))
+K = np.array(numpy.loadtxt(path + "/K.txt"))
+rays = np.array(numpy.loadtxt(path + "/rays.txt"))
+q0 = np.array(numpy.loadtxt(path + "/q0.txt"))
 q0 = q0.at[np.arange(50)[np.array([0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], dtype=bool)]].add(-5)
 
 cC = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0])
