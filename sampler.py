@@ -21,7 +21,7 @@ C = C.at[:-7, :S.shape[1]].set(S[:-7, :])
 C = C.at[-7:-2, :S.shape[1]].set(S[-6:-1, :])
 C = C.at[-2, S.shape[1]:].set(cC)
 C = C.at[-1, S.shape[1]:].set(cA)
-key = jax.random.PRNGKey(time.time())
+key = jax.random.PRNGKey(time.time_ns())
 
 @jax.jit
 def log_rates(q):
