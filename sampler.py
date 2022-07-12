@@ -143,7 +143,7 @@ def step2(q1, p0, l, dt, max_newton_iter=10, tol=1e-9):
         x = x + np.linalg.solve(jac_half2(x, q1, p0, l, dt), -half2(x, q1, p0, l, dt))
         return x, step + 1, np.linalg.norm(half2(x, q1, p0, l, dt))
     
-    x0 = np.concatenate([p1, np.zeros(C.shape[0])])
+    x0 = np.concatenate([p0, np.zeros(C.shape[0])])
     return jax.lax.while_loop(cond, body, (x0, 0, np.linalg.norm(half2(x0, q1, p0, l, dt))))
 	
 @partial(jax.jit, static_argnums=1)
