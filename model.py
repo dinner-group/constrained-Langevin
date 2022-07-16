@@ -16,13 +16,6 @@ class KaiODE:
         self.reaction_consts = reaction_consts.copy()
         self.S = np.zeros((17, self.reaction_consts.shape[0]))
         self.K = np.zeros_like(self.S)
-        self.y0 = np.zeros(17)
-        self.y0 = self.y0.at[0].set(c0)
-        self.y0 = self.y0.at[-1].set(a0)
-        #self.set_matrices()
-    
-    #@jax.jit
-    #def set_matrices(self):
         
         # kTU, kDT, kDS, kSU,\
         # kUTA, kTUA, kTDA, kDTA, kDSA, kSDA, kSUA, kUSA,\
@@ -171,7 +164,6 @@ class KaiODE:
         self.S = self.S.at[15, 37].set(1)
         self.S = self.S.at[13, 37].set(-1)
         
-        
         self.S = self.S.at[1, 38].set(1)
         self.S = self.S.at[0, 38].set(-1)
         self.S = self.S.at[-1, 38].set(-1)
@@ -221,24 +213,36 @@ class KaiODE:
         self.S = self.S.at[-1, 49].set(-1)
         
         self.K = np.where(self.S < 0, -self.S, 0)
-    
+
     @jax.jit
     def f(self, t, y):
 
         return self.S@(self.reaction_consts.at[self.ind_ATP].multiply(self.ATPfrac) * np.prod(y**self.K.T, axis=1))
 
-
     @jax.jit
     def jac(self, t, y):
-
+    
         return jax.jacfwd(self.f, argnums=1)(t, y)
+
+    @jax.jit
+    def f_red(self, t, y):
+
+        yfull = np.zeros(17)
+        yfull = yfull.at[0].set(self.c0 - self.cC[1:-1]@y)
+        yfull = yfull.at[-1].set(self.a0 - self.cA[1:-1]@y)
+        return self.f(t, yfull)
+
+    @jax.jit
+    def jac_red(self, t, y):
+
+        return jax.jacfwd(self.f_red, argnums=1)(t, y)
     
     @jax.jit
     def f_dae(self, t, y):
 
         out = self.f(t, y)
-        out = out.at[0].set(y@self.cC - self.y0[0])
-        out = out.at[-1].set(y@self.cA - self.y0[-1])
+        out = out.at[0].set(y@self.cC - c0)
+        out = out.at[-1].set(y@self.cA - a0)
             
         return out
 
@@ -249,7 +253,7 @@ class KaiODE:
 
     def _tree_flatten(self):
 
-        children = (self.reaction_consts, self.a0, self.c0, self.ATPfrac, self.S, self.K, self.y0)
+        children = (self.reaction_consts, self.a0, self.c0, self.ATPfrac, self.S, self.K)
         aux_data = {}
 
         return (children, aux_data)
