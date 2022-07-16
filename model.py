@@ -241,8 +241,8 @@ class KaiODE:
     def f_dae(self, t, y):
 
         out = self.f(t, y)
-        out = out.at[0].set(y@self.cC - c0)
-        out = out.at[-1].set(y@self.cA - a0)
+        out = out.at[0].set(y@self.cC - self.c0)
+        out = out.at[-1].set(y@self.cA - self.a0)
             
         return out
 
