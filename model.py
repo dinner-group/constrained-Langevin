@@ -229,8 +229,9 @@ class KaiODE:
 
         yfull = np.zeros(17)
         yfull = yfull.at[0].set(self.c0 - self.cC[1:-1]@y)
+        yfull = yfull.at[1:-1].set(y)
         yfull = yfull.at[-1].set(self.a0 - self.cA[1:-1]@y)
-        return self.f(t, yfull)
+        return self.f(t, yfull)[1:-1]
 
     @jax.jit
     def jac_red(self, t, y):
