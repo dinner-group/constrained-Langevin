@@ -13,7 +13,7 @@ class KaiODE:
         self.a0 = a0
         self.c0 = c0
         self.ATPfrac = ATPfrac
-        self.reaction_consts = reaction_consts.copy()
+        self.reaction_consts = reaction_consts
         self.S = np.zeros((17, self.reaction_consts.shape[0]))
         self.K = np.zeros_like(self.S)
         
