@@ -5,7 +5,7 @@ import scipy.integrate
 import scipy.signal
 import warnings
 
-def find_limit_cycle(q, y_atol=1e-3, period_rtol=1e-4):
+def find_limit_cycle(q, period_rtol=1e-5):
     """Perform long time integration and hope that trajectory is attracted to a limit cycle.
     Returns point on the limit cycle and estimated period if successful."""
 
@@ -34,7 +34,7 @@ def find_limit_cycle(q, y_atol=1e-3, period_rtol=1e-4):
         tau0 = 2 * np.pi / np.abs(evals[-1].imag)
     
     try:
-        int0 = scipy.integrate.solve_ivp(model.f, jac=model.jac, t_span=(0, 10 * tau0), y0=y0, t_eval=np.linspace(6 * tau0, 10 * tau0, int(1 / period_rtol)), method="LSODA")
+        int0 = scipy.integrate.solve_ivp(model.f, jac=model.jac, t_span=(0, 20 * tau0), y0=y0, t_eval=np.linspace(12 * tau0, 20 * tau0, int(1 / period_rtol)), method="LSODA")
     except:
         warnings.warn("Integration failed")
         return np.full_like(y0, np.nan), np.nan
