@@ -33,7 +33,11 @@ def find_limit_cycle(q, y_atol=1e-3, period_rtol=1e-4):
     if evals[-1].imag > 0:
         tau0 = 2 * np.pi / np.abs(evals[-1].imag)
     
-    int0 = scipy.integrate.solve_ivp(model.f, jac=model.jac, t_span=(0, 10 * tau0), y0=y0, t_eval=np.linspace(6 * tau0, 10 * tau0, int(1 / period_rtol)), method="LSODA")
+    try:
+        int0 = scipy.integrate.solve_ivp(model.f, jac=model.jac, t_span=(0, 10 * tau0), y0=y0, t_eval=np.linspace(6 * tau0, 10 * tau0, int(1 / period_rtol)), method="LSODA")
+    except:
+        warnings.warn("Integration failed")
+        return np.full_like(y0, np.nan), np.nan
     
     if np.linalg.norm(model.f(0, int0.y[:, -1])) < 1e-9:
         warnings.warn("Converged to fixed point")
