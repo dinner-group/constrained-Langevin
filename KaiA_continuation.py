@@ -23,8 +23,8 @@ parser.add_argument("-o", type=str, required=True)
 args = parser.parse_args()
 
 indata = np.load(args.i)
-outdata = np.zeros((indata.shape[0], 3))
-partial = np.zeros_like(outdata)
+out = np.zeros((indata.shape[0], 3))
+partial = np.zeros_like(out)
 
 i = comm.Get_rank()
 
@@ -41,3 +41,6 @@ while i < indata.shape[0]:
     i += comm.Get_size()
 
 comm.Allreduce([partial, MPI.DOUBLE], [out, MPI.DOUBLE], op=MPI.SUM)
+
+if comm.Get_rank() == 0:
+    np.save(args.out, out)
