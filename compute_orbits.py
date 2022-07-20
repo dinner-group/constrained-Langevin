@@ -11,7 +11,7 @@ parser.add_argument("-stride", type=int, default=1);
 parser.add_argument("-o", type=str, required=True)
 args = parser.parse_args()
 
-traj = np.load(args.i)[args.start:args.stop:args.stride, :]
+traj = np.load(args.i)
 
 if args.start is None:
     args.start = 0
@@ -28,8 +28,9 @@ i = comm.Get_rank() * ntasks
 
 while i < (comm.Get_rank() + 1) * ntasks:
 
-    j = segment_size *  comm.Get_rank() + (i - comm.Get_rank() * ntasks) * args.stride
-    lc = find_limit_cycle(np.exp(log_rates(traj[j, :])), np.exp(q[50:]))
+    j = args.start + segment_size *  comm.Get_rank() + (i - comm.Get_rank() * ntasks) * args.stride
+    print(j, traj[j, 1])
+    lc = find_limit_cycle(np.exp(log_rates(traj[j, :])), np.exp(traj[j, 50:]))
     partial[i, :50] = lc[-1] * np.exp(log_rates(traj[j, :]))
     partial[i, 50:] = lc[:-1]
     i += 1
