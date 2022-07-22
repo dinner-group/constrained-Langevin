@@ -5,13 +5,13 @@ import scipy.integrate
 import scipy.signal
 import warnings
 
-def find_limit_cycle(rates, y0, tau0=None, period_rtol=1e-5, n_periods_lower=16, n_periods_upper=20):
+def find_limit_cycle(rates, y0, tau0=None, perturb=True, period_rtol=1e-5, n_periods_lower=16, n_periods_upper=20):
     """Perform long time integration and hope that trajectory is attracted to a limit cycle.
     Returns point on the limit cycle and estimated period if successful."""
 
     model = KaiODE(rates)
-    
-    if tau0 is None:
+   
+    if perturb:
 
         mask = y0 > 5e-2
         if np.sum(mask * (cC > 0)) >= 2:
@@ -24,6 +24,9 @@ def find_limit_cycle(rates, y0, tau0=None, period_rtol=1e-5, n_periods_lower=16,
 
         ind = np.arange(mask.shape[0])[mask][:2]
         y0 = y0.at[ind].add(np.array([-1e-2, 1e-2]))
+
+    if tau0 is None:
+
         J_fp = model.jac_red(0, y0[1:-1])
         evals = np.linalg.eigvals(J_fp)
         evals = evals[np.argsort(evals.real)]
