@@ -77,14 +77,14 @@ def single_shooting(rates, y0, tau0, tol=1e-9, maxiter=10):
 
         return np.concatenate([y0, np.array([tau0])])
 
-    phase_species = np.argmax(np.max(porbit.y, axis=1) - np.min(porbit.y, axis=1))
+    phase_species = np.argmax(np.max(porbit0.y, axis=1) - np.min(porbit0.y, axis=1))
     porbit1 = scipy.integrate.solve_ivp(model.f_red, jac=model.jac_red, t_span=(0, tau0), y0=porbit0.y[:, np.argmax(porbit0.y[phase_species, :])], method="LSODA", atol=1e-9, rtol=1e-6)
 
     if not porbit1.success:
 
         return np.concatenate([y0, np.array([tau0])])
 
-    err = np.linalg.norm(np.concatenate([porbit1.y[:, -1] - porbit1[:, 0], np.array([model.f_red(porbit1.y[phase_species, 0])])]))
+    err = np.linalg.norm(np.concatenate([porbit1.y[:, -1] - porbit1.y[:, 0], np.array([model.f_red(porbit1.y[phase_species, 0])])]))
     i = 0
     tau = tau0
     ya = porbit1.y[:, 0]
