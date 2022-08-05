@@ -126,7 +126,6 @@ def single_shooting(rates, y0, tau0, tol=1e-9, maxiter=10):
     yb = porbit1.y[:, -1]
     err = np.linalg.norm(np.concatenate([yb - ya, np.array([model.f_red(0, ya)[phase_species]])]))
     err0 = err
-    print(ya, tau)
 
     while err > tol and i < maxiter:
 
@@ -143,8 +142,6 @@ def single_shooting(rates, y0, tau0, tol=1e-9, maxiter=10):
         resid = np.concatenate([yb - ya, np.array([model.f_red(0, ya)[phase_species]])])
         err = np.linalg.norm(resid)
         x = newton(M, ya, yb, tau, phase_species, model)
-
-        print(np.linalg.norm(resid[:15]), resid[-1])
 
         ya = x[:15]
         tau = x[-1]
