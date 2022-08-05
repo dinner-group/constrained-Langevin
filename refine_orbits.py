@@ -27,10 +27,10 @@ while i < (args.stop - args.start) // args.stride:
     lc0 = find_limit_cycle(np.exp(log_rates(traj[i, :])), np.exp(traj[i, 50:]))
     tau1 = lc0[-1]
     lc1 = single_shooting(np.exp(log_rates(traj[i, :])), lc0[1:-2], tau1)
-    partial[i, :50] = lc0[-1] * np.exp(log_rates(traj[i, :]))
-    partial[i, 51:-1] = lc0[:-1]
-    partial[i, 50] = model.cC@lc0[:-1] - model.cC[1:-1]@lc1[:-1]
-    partial[i, -1] = model.cA@lc1[:-1] - model.cA[1:-1]@lc1[:-1]
+    partial[i, :50] = lc1[-1] * np.exp(log_rates(traj[i, :]))
+    partial[i, 51:-1] = lc1[:-1]
+    partial[i, 50] = KaiODE.cC@lc0[:-1] - KaiODE.cC[1:-1]@lc1[:-1]
+    partial[i, -1] = KaiODE.cA@lc0[:-1] - KaiODE.cA[1:-1]@lc1[:-1]
     i += comm.Get_size()
 
 comm.Allreduce([partial, MPI.DOUBLE], [out, MPI.DOUBLE], op=MPI.SUM)
