@@ -126,29 +126,39 @@ def single_shooting(rates, y0, tau0, tol=1e-9, maxiter=10):
     yb = porbit1.y[:, -1]
     err = np.linalg.norm(np.concatenate([yb - ya, np.array([model.f_red(0, ya)[phase_species]])]))
     err0 = err
+    
+    try:
+        while err > tol and i < maxiter:
 
-    while err > tol and i < maxiter:
+            M0 = np.zeros((ya.shape[0], ya.shape[0] + 1))
+            M0 = M0.at[:, 0].set(ya)
+            M0 = M0.at[:, 1:].set(np.identity(ya.shape[0]))
+            M0 = np.ravel(M0, order="F")
 
-        M0 = np.zeros((ya.shape[0], ya.shape[0] + 1))
-        M0 = M0.at[:, 0].set(ya)
-        M0 = M0.at[:, 1:].set(np.identity(ya.shape[0]))
-        M0 = np.ravel(M0, order="F")
+            int_M = scipy.integrate.solve_ivp(f_M, jac=jac_M, t_span=(0, 1), y0=M0, args=(tau, model), method="BDF", atol=1e-9, rtol=1e-6)
 
-        int_M = scipy.integrate.solve_ivp(f_M, jac=jac_M, t_span=(0, 1), y0=M0, args=(tau, model), method="BDF", atol=1e-9, rtol=1e-6)
+            M = int_M.y[15:, -1].reshape((15, 15), order="F")
+            yb = int_M.y[:15, -1]
 
-        M = int_M.y[15:, -1].reshape((15, 15), order="F")
-        yb = int_M.y[:15, -1]
+            resid = np.concatenate([yb - ya, np.array([model.f_red(0, ya)[phase_species]])])
+            err1 = err
+            err = np.linalg.norm(resid)
 
-        resid = np.concatenate([yb - ya, np.array([model.f_red(0, ya)[phase_species]])])
-        err = np.linalg.norm(resid)
-        x = newton(M, ya, yb, tau, phase_species, model)
+            if err > 100 * err1:
+                print("Newton interation for shooting procedure failed to converge")
+                return np.concatenate([y0, np.array([tau0])])
 
-        ya = x[:15]
-        tau = x[-1]
-        i += 1
+            x = newton(M, ya, yb, tau, phase_species, model)
+
+            ya = x[:15]
+            tau = x[-1]
+            i += 1
+    except:
+        return np.concatenate([y0, np.array([tau0])])
 
     if i >= maxiter and err > err0:
 
+        print("Newton interation for shooting procedure failed to converge")
         return np.concatenate([y0, np.array([tau0])])
 
     return np.concatenate([ya, np.array([tau])])
