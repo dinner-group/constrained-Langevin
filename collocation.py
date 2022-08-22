@@ -74,9 +74,9 @@ class colloc:
 
         indices = np.vstack([indices, 
                              np.mgrid[:self.n, self.n_coeff:self.n].reshape((2, self.n * self.n_par)).T, 
-                             np.mgrid[self.n_colloc_eq + self.n_bc:self.n, :self.n].reshape((2, self.n * self.n_par)).T, 
-                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_bc, :self.n_dim].reshape((2, self.n_dim * self.n_bc)).T, 
-                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_bc, self.n_coeff - self.n_dim:self.n_coeff].reshape((2, self.n_bc * self.n_dim)).T])
+                             np.mgrid[self.n_colloc_eq + self.n_dim:self.n, :self.n].reshape((2, self.n * self.n_par)).T, 
+                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, :self.n_dim].reshape((2, self.n_dim * self.n_dim)).T, 
+                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, self.n_coeff - self.n_dim:self.n_coeff].reshape((2, self.n_dim * self.n_dim)).T])
 
         data = np.ones(indices.shape[0])
 
@@ -155,4 +155,5 @@ class colloc:
     def _tree_unflatten(cls, aux_data, children):
 
         return cls(aux_data["f"], aux_data["f_p"], *children)
-            
+           
+jax.tree_util.register_pytree_node(colloc, colloc._tree_flatten, colloc._tree_unflatten)
