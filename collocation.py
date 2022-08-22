@@ -46,7 +46,7 @@ class colloc:
     def lagrange_poly(x, points, coeff, poly_denom=None):
 
         if poly_denom is None:
-            poly_denom = self.lagrange_poly_denom(points)
+            poly_denom = colloc.lagrange_poly_denom(points)
 
         poly_numer_arr = np.tile(x - points, (n_colloc_point + 1, 1))
         poly_numer_arr = poly_numer_arr.at[np.diag_indices(n_colloc_point + 1)].set(1)
@@ -57,7 +57,7 @@ class colloc:
     @jax.jit
     def lagrange_poly_grad(x, points, coeff, poly_denom=None):
 
-        return jax.jacfwd(self.lagrange_poly, argnums=0)(x, points, coeff, poly_denom)
+        return jax.jacfwd(colloc.lagrange_poly, argnums=0)(x, points, coeff, poly_denom)
     
     def compute_jac_sparsity(self):
     
@@ -96,13 +96,13 @@ class colloc:
             interval_start = self.n_dim * i * self.n_colloc_point
             interval_width = (self.n_colloc_point + 1) * self.n_dim
             interval_end = self.n_dim * i * self.n_colloc_point + (self.n_colloc_point + 1) * self.n_dim
-            poly_denom = self.lagrange_poly_denom(sub_points)
+            poly_denom = colloc.lagrange_poly_denom(sub_points)
 
             def loop_inner(j, _):
 
-                poly = self.lagrange_poly(colloc_points[j], sub_points, jax.lax.dynamic_slice(y, (interval_start,), (interval_width,)).reshape((self.n_dim, self.n_colloc_point + 1), order="F"),
+                poly = colloc.lagrange_poly(colloc_points[j], sub_points, jax.lax.dynamic_slice(y, (interval_start,), (interval_width,)).reshape((self.n_dim, self.n_colloc_point + 1), order="F"),
                                      poly_denom)
-                deriv = self.lagrange_poly_grad(colloc_points[j], sub_points, jax.lax.dynamic_slice(y, (interval_start,), (interval_width,)).reshape((self.n_dim, self.n_colloc_point + 1), order="F"),
+                deriv = colloc.lagrange_poly_grad(colloc_points[j], sub_points, jax.lax.dynamic_slice(y, (interval_start,), (interval_width,)).reshape((self.n_dim, self.n_colloc_point + 1), order="F"),
                                             poly_denom)
                 return j + 1, deriv - x[self.n_coeff] * self.f(colloc_points[j], poly)
 
