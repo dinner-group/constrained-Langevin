@@ -112,7 +112,7 @@ class colloc:
             
         return np.concatenate([np.ravel(jax.lax.scan(f=loop_outer, init=i, xs=None, length=self.n_mesh_point)[1]), 
                                x[self.n_coeff - self.n_dim:self.n_coeff] - x[:self.n_dim], 
-                               self.phase_condition(x[:, 0], x[:, -1])])
+                               self.f_p(x[:, 0], x[:, -1])])
     
     @jax.jit
     def _jac(self, x):
