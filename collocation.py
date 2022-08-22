@@ -73,7 +73,7 @@ class colloc:
         indices = np.vstack(jax.lax.scan(loop_blocks, init=0, xs=mesh_point)[1])
 
         indices = np.vstack([indices, 
-                             np.mgrid[:n, self.n_coeff:n].reshape((2, self.n * self.n_par)).T, 
+                             np.mgrid[:self.n, self.n_coeff:n].reshape((2, self.n * self.n_par)).T, 
                              np.mgrid[self.n_colloc_eq + self.n_bc:n, :self.n].reshape((2, self.n * self.n_par)).T, 
                              np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_bc, :self.n_dim].reshape((2, self.n_dim * self.n_bc)).T, 
                              np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_bc, self.n_coeff - self.n_dim:self.n_coeff].reshape((2, self.n_bc * self.n_dim)).T])
