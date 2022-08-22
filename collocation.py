@@ -27,7 +27,7 @@ class colloc:
         self.n_coeff = self.n_dim * (self.n_mesh_point * self.n_colloc_point + 1)
         self.n = self.n_coeff + self.n_par
         self.n_colloc_eq = self.n_dim * self.n_mesh_point * self.n_colloc_point
-        self.jac_sparsity = self.colloc_jac_sparsity()
+        self.jac_sparsity = self.compute_jac_sparsity()
         self.success = False
 
 
@@ -59,7 +59,7 @@ class colloc:
 
         return jax.jacfwd(lagrange_poly, argnums=0)(x, points, coeff, poly_denom)
     
-    def jac_sparsity(self):
+    def compute_jac_sparsity(self):
     
         mesh_point = np.arange(self.n_mesh_point)
         interval_width = self.n_colloc_point * self.n_dim
