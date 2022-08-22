@@ -1,7 +1,9 @@
+import jax
 import jax.numpy as np
 import scipy.sparse
 import sparsejac.sparsejac as sparsejac
 from functools import partial
+jax.config.update("jax_enable_x64", True)
 
 class colloc:
 
