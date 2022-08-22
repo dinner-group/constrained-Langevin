@@ -11,12 +11,14 @@ class colloc:
     n_colloc_point = 5
     n_bc = 2
 
-    def __init__(self, f, phase_condition, y0, p0, xa=0, xb=1):
+    def __init__(self, f, f_p, y0, p0, xa=0, xb=1):
 
         assert y0.shape[1] == n_mesh_point
-        
+
+        self.xa = xa
+        self.xb = xb
         self.f = f
-        self.phase_condition = phase_condition
+        self.f_p = f_p
         self.xa = xa
         self.xb = xb
         self.y = y0
@@ -85,7 +87,7 @@ class colloc:
     @jax.jit
     def resid(self, x):
         
-        mesh_points = np.linspace(0, 1, n_mesh_point + 1)
+        mesh_points = np.linspace(self.xa, self.xb, n_mesh_point + 1)
         i = 0
         
         def loop_outer(i, _):
@@ -142,4 +144,17 @@ class colloc:
             
         if self.err < rtol:
             self.success = True
+
+    def _tree_flatten(self):
+
+        children = (self.y, self.p, self.xa, self.xb)
+        aux_data = {"f":self.f, "f_p":self.f_p, "n_dim":self.n_dim, "n_mesh_point":self.n_mesh_point, 
+        "n_par":self.n_par, "n_coeff":self.n_coeff, "n":self.n, "n_colloc_eq":self.n_colloc_eq}
+
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+
+        return cls(aux_data["f"], aux_data["f_p"], *children)
             
