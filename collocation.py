@@ -13,8 +13,6 @@ class colloc:
 
     def __init__(self, f, f_p, y0, p0, xa=0, xb=1):
 
-        assert y0.shape[1] == n_mesh_point
-
         self.xa = xa
         self.xb = xb
         self.f = f
