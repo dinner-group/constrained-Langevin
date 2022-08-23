@@ -8,13 +8,15 @@ class KaiODE:
     cC = np.array([1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 0.])
     cA = np.array([0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 1., 2., 1., 2., 1.])
     ind_ATP = np.array([7, 11, 12, 17, 20, 23, 26, 30])
+    n_dim = 17
+    n_conserve = 2
     
     def __init__(self, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.):
         self.a0 = a0
         self.c0 = c0
         self.ATPfrac = ATPfrac
         self.reaction_consts = reaction_consts
-        self.S = np.zeros((17, self.reaction_consts.shape[0]))
+        self.S = np.zeros((KaiODE.n_dim, self.reaction_consts.shape[0]))
         self.K = np.zeros_like(self.S)
         
         # kTU, kDT, kDS, kSU,\
@@ -227,7 +229,7 @@ class KaiODE:
     @jax.jit
     def f_red(self, t, y):
 
-        yfull = np.zeros(17)
+        yfull = np.zeros(KaiODE.n_dim)
         yfull = yfull.at[0].set(self.c0 - self.cC[1:-1]@y)
         yfull = yfull.at[1:-1].set(y)
         yfull = yfull.at[-1].set(self.a0 - self.cA[1:-1]@y)
