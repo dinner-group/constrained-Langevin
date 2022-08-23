@@ -27,7 +27,7 @@ class colloc:
         self.n_coeff = y0.size
         self.n = self.n_coeff + self.n_par
         self.n_colloc_eq = self.n_dim * self.n_mesh_point * self.n_colloc_point
-        self.t = np.linspace(ta, tb, self.n_coeff)
+        self.t = np.linspace(ta, tb, self.n_coeff // self.n_dim)
         self.success = False
 
 
@@ -171,16 +171,17 @@ class colloc:
         J = self.jac(self.y.ravel(order="F"), self.p)
         dx = scipy.sparse.linalg.spsolve(J, -r)
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
-        self.y = x[:self.y.size].reshape((self.n_dim, self.n_mesh_point), order="F")
+        self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
         self.p = x[self.y.size:]
         self.err = np.linalg.norm(r)
     
     def solve(self, rtol=1e-4, maxiter=10):
         
-        self.err = self.resid(self.y.ravel(order="F"), self.p)
+        self.err = np.linalg.norm(self.resid(self.y.ravel(order="F"), self.p))
+        i = 0
         
         while i < maxiter and self.err >= rtol:
-            self.step()
+            self.newton_step()
             
         if self.err < rtol:
             self.success = True
