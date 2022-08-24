@@ -217,28 +217,56 @@ class KaiODE:
         self.K = np.where(self.S < 0, -self.S, 0)
 
     @jax.jit
-    def f(self, t, y):
+    def f(self, t, y, reaction_consts=None, ATPfrac=None):
 
-        return self.S@(self.reaction_consts.at[self.ind_ATP].multiply(self.ATPfrac) * np.prod(y**self.K.T, axis=1))
+        if reaction_consts is None:
+            reaction_consts = self.reaction_consts
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        return self.S@(reaction_consts.at[self.ind_ATP].multiply(ATPfrac) * np.prod(y**self.K.T, axis=1))
 
     @jax.jit
-    def jac(self, t, y):
+    def jac(self, t, y, reaction_consts=None, ATPfrac=None):
     
-        return jax.jacfwd(self.f, argnums=1)(t, y)
+        if reaction_consts is None:
+            reaction_consts = self.reaction_consts
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+        
+        return jax.jacfwd(self.f, argnums=1)(t, y, reaction_consts, ATPfrac)
 
     @jax.jit
-    def f_red(self, t, y):
+    def f_red(self, t, y, reaction_consts=None, a0=None, c0=None, ATPfrac=None):
+
+        if reaction_consts is None:
+            reaction_consts=self.reaction_consts
+        if a0 is None:
+            a0 = self.a0
+        if c0 is None:
+            c0 = self.c0
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
 
         yfull = np.zeros(KaiODE.n_dim)
-        yfull = yfull.at[0].set(self.c0 - self.cC[1:-1]@y)
+        yfull = yfull.at[0].set(c0 - KaiODE.cC[1:-1]@y)
         yfull = yfull.at[1:-1].set(y)
-        yfull = yfull.at[-1].set(self.a0 - self.cA[1:-1]@y)
-        return self.f(t, yfull)[1:-1]
+        yfull = yfull.at[-1].set(a0 - KaiODE.cA[1:-1]@y)
+        return self.f(t, yfull, reaction_consts, ATPfrac)[1:-1]
 
     @jax.jit
-    def jac_red(self, t, y):
+    def jac_red(self, t, y, reaction_consts=None, a0=None, c0=None, ATPfrac=None):
 
-        return jax.jacfwd(self.f_red, argnums=1)(t, y)
+        if reaction_consts is None:
+            reaction_consts=self.reaction_consts
+        if a0 is None:
+            a0 = self.a0
+        if c0 is None:
+            c0 = self.c0
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        return jax.jacfwd(self.f_red, argnums=1)(t, y, reaction_consts, a0, c0, ATPfrac)
     
     @jax.jit
     def f_dae(self, t, y):

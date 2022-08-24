@@ -173,11 +173,11 @@ class colloc:
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
         self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
         self.p = x[self.y.size:]
-        self.err = np.linalg.norm(r)
+        self.err = np.linalg.norm(r / x)
     
     def solve(self, rtol=1e-4, maxiter=10):
         
-        self.err = np.linalg.norm(self.resid(self.y.ravel(order="F"), self.p))
+        self.err = np.linalg.norm(self.resid(self.y.ravel(order="F"), self.p) / np.concatenate([self.y.ravel(order="F"), self.p]))
         i = 0
         
         while i < maxiter and self.err >= rtol:
