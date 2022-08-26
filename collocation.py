@@ -10,8 +10,9 @@ class colloc:
     gauss_points = (1 + np.array([-0.906179845938664, -0.538469310105683, 0.0, +0.538469310105683, +0.906179845938664])) / 2
     n_colloc_point = 5
 
-    def __init__(self, f, f_p, y0, p0, ta=0, tb=1):
+    def __init__(self, f, f_p, y0, p0, args, ta=0, tb=1):
 
+        self.args = args
         self.ta = ta
         self.tb = tb
         self.f = f
@@ -92,7 +93,7 @@ class colloc:
             poly = colloc.lagrange_poly(colloc_points[i], sub_points, y.reshape((self.n_dim, self.n_colloc_point + 1), order="F"), poly_denom)
             poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y.reshape((self.n_dim, self.n_colloc_point + 1), order="F"), poly_denom)
 
-            return i + 1, poly_grad - self.f(colloc_points[i], poly, p)
+            return i + 1, poly_grad - self.f(colloc_points[i], poly, p, *self.args)
 
         return jax.lax.scan(f=loop_body, init=0, xs=None, length=self.n_colloc_point)[1].ravel(order="C")
 
@@ -115,7 +116,7 @@ class colloc:
             
         return np.concatenate([jax.lax.scan(f=loop_body, init=i, xs=None, length=self.n_mesh_point)[1].ravel(order="C"), 
                                y[self.n_coeff - self.n_dim:self.n_coeff] - y[:self.n_dim], 
-                               self.f_p(self.t, y, p)])
+                               self.f_p(self.t, y, p, *self.args)])
     
     @jax.jit
     def _jac(self, y, p):
@@ -149,7 +150,7 @@ class colloc:
         data = np.concatenate([np.ravel(J_colloc_eq[1][1], order="C"), 
                                np.ravel(-np.identity(self.n_dim), order="C"),
                                np.ravel(np.identity(self.n_dim), order="C"),
-                               np.ravel(np.hstack([jax.jacfwd(self.f_p, argnums=1)(self.t, y, p), jax.jacfwd(self.f_p, argnums=2)(self.t, y, p)]), order="C")
+                               np.ravel(np.hstack([jax.jacfwd(self.f_p, argnums=1)(self.t, y, p, *self.args), jax.jacfwd(self.f_p, argnums=2)(self.t, y, p, *self.args)]), order="C")
                                ])
         indices = np.vstack([np.vstack(J_colloc_eq[1][0]), 
                              np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, :self.n_dim].reshape((2, self.n_dim * self.n_dim)).T,
@@ -158,8 +159,7 @@ class colloc:
                              ])
 
         return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n))
-
-    
+ 
     def jac(self, y, p):
         
         J = self._jac(y, p)
@@ -188,7 +188,7 @@ class colloc:
 
     def _tree_flatten(self):
 
-        children = (self.y, self.p, self.ta, self.tb)
+        children = (self.y, self.p, self.args, self.ta, self.tb)
         aux_data = {"f":self.f, "f_p":self.f_p, "n_dim":self.n_dim, "n_mesh_point":self.n_mesh_point, 
         "n_par":self.n_par, "n_coeff":self.n_coeff, "n":self.n, "n_colloc_eq":self.n_colloc_eq}
 
