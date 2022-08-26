@@ -104,6 +104,18 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
     LL -= 100 * (p0 - 1)**2
     
     max_amplitude_species = np.argmax(np.max(y_out[-1], axis=1) - np.min(y_out[-1], axis=1))
+    model = KaiODE(reaction_consts_0)
+
+    @jax.jit
+    def phase_condition(t, y, p, reaction_consts, a0, max_amplitude_species):
+        return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts, a0)[max_amplitude_species]])
+    
+    @jax.jit
+    def f(t, y, p, reaction_consts, a0, max_amplitude_species):
+        return p[0] * model.f_red(t, y, reaction_consts, a0)
+
+    solver = colloc(f, phase_condition, y_out[-1], np.array([p_out[-1]]), args=(model.reaction_consts, model.a0, max_amplitude_species))
+
     _, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
     dp = dp * reaction_consts_0
     dp_out.append(dp)
@@ -124,18 +136,12 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
         proposal_factor_f = -np.sum(randn**2) - np.pi * np.prod(sigma)
         
         reaction_consts_propose = np.exp(np.log(reaction_consts_out[-1]) + step)
-        model = KaiODE(reaction_consts_propose)
         max_amplitude_species = np.argmax(np.max(y_out[-1], axis=1) - np.min(y_out[-1], axis=1))
-        
-        @jax.jit
-        def phase_condition(t, y, p):
-            return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve])[max_amplitude_species]])
-        
-        @jax.jit
-        def f(t, y, p):
-            return p[0] * model.f_red(t, y)
-        
-        solver = colloc(f, phase_condition, y_out[-1], np.array([p_out[-1]]))
+   
+        solver.success = False
+        solver.y = y_out[-1]
+        solver.p = solver.p.at[0].set(p_out[-1])
+        solver.args = (reaction_consts_propose, model.a0, max_amplitude_species)
         solver.solve()
         
         if not solver.success:
