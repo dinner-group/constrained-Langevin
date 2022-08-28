@@ -98,8 +98,13 @@ class colloc:
         return jax.lax.scan(f=loop_body, init=0, xs=None, length=self.n_colloc_point)[1].ravel(order="C")
 
     @jax.jit
-    def resid(self, y, p):
+    def resid(self, y=None, p=None):
         
+        if y is None:
+            y = self.y.ravel(order="F")
+        if p is None:
+            p = self.p
+
         i = 0
         interval_width = self.n_colloc_point * self.n_dim
         
@@ -119,8 +124,13 @@ class colloc:
                                self.f_p(self.t, y, p, *self.args)])
     
     @jax.jit
-    def _jac(self, y, p):
+    def _jac(self, y=None, p=None):
         
+        if y is None:
+            y = self.y.ravel(order="F")
+        if p is None:
+            p = self.p
+
         i = 0
 
         interval_width = self.n_colloc_point * self.n_dim
@@ -158,17 +168,22 @@ class colloc:
                              np.mgrid[self.n_colloc_eq + self.n_dim:self.n_colloc_eq + self.n_dim + self.n_par, :self.n].reshape((2, self.n_par * self.n)).T
                              ])
 
-        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n))
+        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n)).sort_indices()
  
-    def jac(self, y, p):
+    def jac(self, y=None, p=None):
         
+        if y is None:
+            y = self.y.ravel(order="F")
+        if p is None:
+            p = self.p
+
         J = self._jac(y, p)
         return scipy.sparse.csc_matrix((J.data, J.indices.T))
     
     def newton_step(self):
         
-        r = self.resid(self.y.ravel(order="F"), self.p)
-        J = self.jac(self.y.ravel(order="F"), self.p)
+        r = self.resid()
+        J = self.jac()
         dx = scipy.sparse.linalg.spsolve(J, -r)
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
         self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
@@ -177,10 +192,11 @@ class colloc:
     
     def solve(self, rtol=1e-4, maxiter=10):
         
-        self.err = np.linalg.norm(self.resid(self.y.ravel(order="F"), self.p) / np.concatenate([self.y.ravel(order="F"), self.p]))
+        self.err = np.linalg.norm(self.resid() / np.concatenate([self.y.ravel(order="F"), self.p]))
         i = 0
         
         while i < maxiter and self.err >= rtol:
+            i += 1
             self.newton_step()
             
         if self.err < rtol:
