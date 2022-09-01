@@ -1,3 +1,4 @@
+import numpy
 import jax
 import jax.numpy as np
 import jax.experimental.sparse
@@ -59,29 +60,6 @@ class colloc:
     def lagrange_poly_grad(x, points, coeff, poly_denom=None):
 
         return jax.jacfwd(colloc.lagrange_poly, argnums=0)(x, points, coeff, poly_denom)
-    
-    def compute_jac_sparsity(self):
-    
-        mesh_index = np.arange(self.n_mesh_point)
-        interval_width = self.n_colloc_point * self.n_dim
-
-        block = np.mgrid[:interval_width, :interval_width + self.n_dim].reshape((2, (self.n_dim * self.n_colloc_point) * self.n_dim * (self.n_colloc_point + 1))).T
-
-        def loop_blocks(_, i):
-
-            return _, block + i * interval_width
-
-        indices = np.vstack(jax.lax.scan(loop_blocks, init=0, xs=mesh_index)[1])
-
-        indices = np.vstack([indices, 
-                             np.mgrid[:self.n, self.n_coeff:self.n].reshape((2, self.n * self.n_par)).T, 
-                             np.mgrid[self.n_colloc_eq + self.n_dim:self.n, :self.n].reshape((2, self.n * self.n_par)).T, 
-                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, :self.n_dim].reshape((2, self.n_dim * self.n_dim)).T, 
-                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, self.n_coeff - self.n_dim:self.n_coeff].reshape((2, self.n_dim * self.n_dim)).T])
-
-        data = np.ones(indices.shape[0])
-
-        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n))
    
     @jax.jit
     def _compute_resid_interval(self, y, p, colloc_points, sub_points):
@@ -180,24 +158,28 @@ class colloc:
         J = self._jac(y, p)
         return scipy.sparse.csc_matrix((J.data, J.indices.T))
     
-    def newton_step(self):
+    def _superLU(self):
+        
+        self.jac_LU = scipy.sparse.linalg.splu(self.jac())
+
+    def _newton_step(self):
         
         r = self.resid()
-        J = self.jac()
-        dx = scipy.sparse.linalg.spsolve(J, -r)
+        self._superLU()
+        dx = self.jac_LU.solve(-numpy.asanyarray(r))
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
         self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
         self.p = x[self.y.size:]
         self.err = np.linalg.norm(r)
     
     def solve(self, atol=1e-6, maxiter=10):
-        
+       
         self.err = np.linalg.norm(self.resid())
-        i = 0
+        self.n_iter = 0
         
-        while i < maxiter and self.err >= atol:
-            i += 1
-            self.newton_step()
+        while self.n_iter < maxiter and self.err >= atol:
+            self.n_iter += 1
+            self._newton_step()
             
         if self.err < atol:
             self.success = True
