@@ -269,18 +269,36 @@ class KaiODE:
         return jax.jacfwd(self.f_red, argnums=1)(t, y, reaction_consts, a0, c0, ATPfrac)
     
     @jax.jit
-    def f_dae(self, t, y):
+    def f_dae(self, t, y, reaction_consts=None, a0=None, c0=None, ATPfrac=None):
 
-        out = self.f(t, y)
-        out = out.at[0].set(y@self.cC - self.c0)
-        out = out.at[-1].set(y@self.cA - self.a0)
+        if reaction_consts is None:
+            reaction_consts=self.reaction_consts
+        if a0 is None:
+            a0 = self.a0
+        if c0 is None:
+            c0 = self.c0
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        out = self.f(t, y, reaction_consts, ATPfrac)
+        out = out.at[0].set(y@self.cC - c0)
+        out = out.at[-1].set(y@self.cA - a0)
             
         return out
 
     @jax.jit
-    def jac_dae(self, t, y):
+    def jac_dae(self, t, y, reaction_consts=None, a0=None, c0=None, ATPfrac=None):
 
-        return jax.jacfwd(self.f_dae, argnums=1)(t, y)
+        if reaction_consts is None:
+            reaction_consts=self.reaction_consts
+        if a0 is None:
+            a0 = self.a0
+        if c0 is None:
+            c0 = self.c0
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        return jax.jacfwd(self.f_dae, argnums=1)(t, y, reaction_consts, a0, c0, ATPfrac)
 
     def _tree_flatten(self):
 
