@@ -95,7 +95,7 @@ def elim1(solver, J=None):
 
         i, data, par_eq = carry
         block_start = i * block_size
-        block = jax.lax.dynamic_slice(data, (block_start,), (block_size,)).reshape((interval_width, interval_width + solver.n_dim + 1))
+        block = jax.lax.dynamic_slice(data, (block_start,), (block_size,)).reshape((interval_width, interval_width + solver.n_dim + solver.n_par))
         
         lu, _, p = jax.lax.linalg.lu(block[:, solver.n_dim:-solver.n_dim - solver.n_par])
         L = np.identity(lu.shape[0]).at[:, :lu.shape[1]].add(np.tril(lu, k=-1))
@@ -105,9 +105,9 @@ def elim1(solver, J=None):
         
         block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width), (solver.n_par, interval_width + solver.n_dim))
         elim_coeff = jax.scipy.linalg.solve_triangular(U.T, block_par_eq[:, solver.n_dim:-solver.n_dim].T, lower=True)
-        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@block[:interval_width - solver.n_dim, :solver.n_par], (0, i * interval_width))
+        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@block[:interval_width - solver.n_dim, :-solver.n_par], (0, i * interval_width))
         par_eq = jax.lax.dynamic_update_slice(par_eq, par_eq[:, -solver.n_par]\
-                                              - elim_coeff.T@block[:interval_width - solver.n_dim, solver.n_par:], (0, solver.n_coeff))
+                                              - elim_coeff.T@block[:interval_width - solver.n_dim, -solver.n_par:], (0, solver.n_coeff))
         
         return (i + 1, data, par_eq), elim_coeff
     
@@ -234,12 +234,12 @@ def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
 
     LL = 0
     LL -= 300 * (solver1.p[0] - 1)**2
-    LL -= 200 * (solver2.p[0] - 1)**2
-    LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver1.y[:, 0], solver1.p, *solver1.args)))**2)
-    LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver2.y[:, 0], solver2.p, *solver2.args)))**2)
+    LL -= 50 * (solver2.p[0] - 1)**2
+    LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver1.y[:, 0], solver1.p, *solver1.args))**2)
+    LL -= 1 / (100 * np.linalg.norm(solver2.f(0, solver2.y[:, 0], solver2.p, *solver2.args))**2)
     LL += LL_monodromy(solver1, floquet_multiplier_threshold)
     LL += LL_monodromy(solver2, floquet_multiplier_threshold)
-
+    
     return LL
 
 def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=1000):
@@ -297,11 +297,11 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=100
 
 @jax.jit
 def f_rc(t, y, p, model, reaction_consts_propose, a0, max_amplitude_species):
-    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts_propose)
+    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts_propose, a0=a0)
 
 @jax.jit
 def fp_rc(t, y, p, model, reaction_consts_propose, a0, max_amplitude_species):
-    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts_propose)[max_amplitude_species]])
+    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts_propose, a0=a0)[max_amplitude_species]])
 
 @jax.jit 
 def f_a(t, y, p, continuation_direction, y_guess, p_guess, model, max_amplitude_species):
@@ -325,7 +325,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
 
     model = KaiODE(reaction_consts_0)
     p0_a = np.array([period0, a0])
-    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size, np.size(period0) + 1).at[-1].set(1), y0, p0_a, model, max_amplitude_species))
+    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1), y0, p0_a, model, max_amplitude_species))
 
     y_acont, p_acont = continuation(solvera, a1)
 
@@ -333,10 +333,10 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
     period_out = [[period0, p_acont[-1, 0]]]
     dperiod_out = []
     reaction_consts_out = [reaction_consts_0]
-    
+
     solver1 = colloc(f_rc, fp_rc, y0, np.array([period0]), args=(model, model.reaction_consts, a0, max_amplitude_species))
-    solver2 = colloc(f_rc, fp_rc, y_acont[-1], p_acont[-1, 0], args=(model, model.reaction_consts, p_acont[-1, 0], max_amplitude_species))
-    LL = compute_LL(solver1, solver2, model)
+    solver2 = colloc(f_rc, fp_rc, y_acont[-1], np.array([p_acont[-1, 0]]), args=(model, model.reaction_consts, p_acont[-1, 1], max_amplitude_species))
+    LL = compute_LL(solver1, solver2)
 
     #_, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
     #dp = dp * reaction_consts_0
@@ -355,7 +355,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
         print("iteration %d"%(i), flush=True)
         print("Log likelihood %.5f"%(LL), flush=True)
         print("accepted:%d rejected:%d failed:%d"%(accepted, rejected, failed), flush=True)
-        print("period: %.5f"%(period_out[-1]), flush=True)
+        print("period: %.5f, %.5f"%(period_out[-1][0], period_out[-1][1]), flush=True)
         
         key, subkey = jax.random.split(key)
         #u, s, vh = np.linalg.svd(dperiod_out[-1])
@@ -367,7 +367,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
         step = randn * step_size
         
         reaction_consts_propose = np.exp(np.log(reaction_consts_out[-1]) + step)
-        max_amplitude_species = np.argmax(np.max(y_out[-1], axis=1) - np.min(y_out[-1], axis=1))
+        max_amplitude_species = np.argmax(np.max(y_out[-1][0], axis=1) - np.min(y_out[-1], axis=1))
    
         solver1.success = False
         solver1.y = y_out[-1][0]
@@ -390,7 +390,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
             #print("Accept: %s"%(False))
             continue
             
-        LL_propose = compute_LL(solver1, solver2, model)
+        LL_propose = compute_LL(solver1, solver2)
             
         #_, dp_propose = compute_sensitivity_boundary(solver1.y[:, 0], solver1.y[:, -1], solver1.p[0], reaction_consts_propose, max_amplitude_species, M=M_propose)
         #u, s, vh = np.linalg.svd(dp_propose)
