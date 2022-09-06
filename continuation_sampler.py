@@ -234,7 +234,7 @@ def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
 
     LL = 0
     LL -= 300 * (solver1.p[0] - 1)**2
-    LL -= 10 * (solver2.p[0] - 1)**2
+    LL -= 100 * (solver2.p[0] - 1)**2
     LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver1.y[:, 0], solver1.p, *solver1.args))**2)
     LL -= 1 / (100 * np.linalg.norm(solver2.f(0, solver2.y[:, 0], solver2.p, *solver2.args))**2)
     LL += LL_monodromy(solver1, floquet_multiplier_threshold)
