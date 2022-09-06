@@ -367,7 +367,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
         step = randn * step_size
         
         reaction_consts_propose = np.exp(np.log(reaction_consts_out[-1]) + step)
-        max_amplitude_species = np.argmax(np.max(y_out[-1][0], axis=1) - np.min(y_out[-1], axis=1))
+        max_amplitude_species = np.argmax(np.max(y_out[-1][0], axis=1) - np.min(y_out[-1][0], axis=1))
    
         solver1.success = False
         solver1.y = y_out[-1][0]
@@ -378,7 +378,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
         solver2.success = False
         solver2.y = y_out[-1][1]
         solver2.p = solver2.p.at[0].set(period_out[-1][1])
-        solver2.args = (model, reaction_consts_propose, p_acont[-1, 0], max_amplitude_species)
+        solver2.args = (model, reaction_consts_propose, p_acont[-1, 1], max_amplitude_species)
         solver2.solve(atol=1e-9)
         
         if not (solver1.success and solver2.success):
