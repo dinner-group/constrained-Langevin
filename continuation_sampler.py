@@ -234,7 +234,7 @@ def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
 
     LL = 0
     LL -= 300 * (solver1.p[0] - 1)**2
-    LL -= 50 * (solver2.p[0] - 1)**2
+    LL -= 10 * (solver2.p[0] - 1)**2
     LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver1.y[:, 0], solver1.p, *solver1.args))**2)
     LL -= 1 / (100 * np.linalg.norm(solver2.f(0, solver2.y[:, 0], solver2.p, *solver2.args))**2)
     LL += LL_monodromy(solver1, floquet_multiplier_threshold)
@@ -379,7 +379,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
         solver2.y = y_out[-1][1]
         solver2.p = solver2.p.at[0].set(period_out[-1][1])
         solver2.args = (model, reaction_consts_propose, p_acont[-1, 1], max_amplitude_species)
-        solver2.solve(atol=1e-9)
+        solver2.solve(atol=1e-8)
         
         if not (solver1.success and solver2.success):
             y_out.append(y_out[-1])
