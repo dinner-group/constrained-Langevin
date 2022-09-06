@@ -81,153 +81,210 @@ def compute_sensitivity_boundary(ya, yb, period, reaction_consts, max_amplitude_
     return sol[:KaiODE.n_dim - KaiODE.n_conserve, :], sol[KaiODE.n_dim - KaiODE.n_conserve:, :]
 
 @jax.jit
-def elim1(colloc_solver, J=None):
+def elim1(solver, J=None):
 
     if J == None:
-        J = colloc_solver._jac(colloc_solver.y.ravel(order="F"), colloc_solver.p)
+        J = solver._jac(solver.y.ravel(order="F"), solver.p)
     
-    interval_width = colloc_solver.n_colloc_point * colloc_solver.n_dim
-    block_size = (interval_width + colloc_solver.n_dim + colloc_solver.n_par) * interval_width
-    bc_block_size = (2 * colloc_solver.n_dim**2  + colloc_solver.n_par * colloc_solver.n_dim)
-    par_eq = J.data[-colloc_solver.n * colloc_solver.n_par:].reshape((colloc_solver.n_par, colloc_solver.n))
+    interval_width = solver.n_colloc_point * solver.n_dim
+    block_size = (interval_width + solver.n_dim + solver.n_par) * interval_width
+    bc_block_size = (2 * solver.n_dim**2  + solver.n_par * solver.n_dim)
+    par_eq = J.data[-solver.n * solver.n_par:].reshape((solver.n_par, solver.n))
     
     def loop_body(carry, _):
 
         i, data, par_eq = carry
         block_start = i * block_size
-        block = jax.lax.dynamic_slice(data, (block_start,), (block_size,)).reshape((interval_width, interval_width + colloc_solver.n_dim + 1))
+        block = jax.lax.dynamic_slice(data, (block_start,), (block_size,)).reshape((interval_width, interval_width + solver.n_dim + 1))
         
-        lu, _, p = jax.lax.linalg.lu(block[:, colloc_solver.n_dim:-colloc_solver.n_dim - colloc_solver.n_par])
+        lu, _, p = jax.lax.linalg.lu(block[:, solver.n_dim:-solver.n_dim - solver.n_par])
         L = np.identity(lu.shape[0]).at[:, :lu.shape[1]].add(np.tril(lu, k=-1))
-        U = np.triu(lu)[:interval_width - colloc_solver.n_dim]
+        U = np.triu(lu)[:interval_width - solver.n_dim]
         block = jax.scipy.linalg.solve_triangular(L, block[p], lower=True)
         data = jax.lax.dynamic_update_slice(data, block.ravel(), (block_start,))
         
-        block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width), (colloc_solver.n_par, interval_width + colloc_solver.n_dim))
-        elim_coeff = jax.scipy.linalg.solve_triangular(U.T, block_par_eq[:, colloc_solver.n_dim:-colloc_solver.n_dim].T, lower=True)
-        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@block[:interval_width - colloc_solver.n_dim, :colloc_solver.n_par], (0, i * interval_width))
-        par_eq = jax.lax.dynamic_update_slice(par_eq, par_eq[:, -colloc_solver.n_par]\
-                                              - elim_coeff.T@block[:interval_width - colloc_solver.n_dim, colloc_solver.n_par:], (0, colloc_solver.n_coeff))
+        block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width), (solver.n_par, interval_width + solver.n_dim))
+        elim_coeff = jax.scipy.linalg.solve_triangular(U.T, block_par_eq[:, solver.n_dim:-solver.n_dim].T, lower=True)
+        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@block[:interval_width - solver.n_dim, :solver.n_par], (0, i * interval_width))
+        par_eq = jax.lax.dynamic_update_slice(par_eq, par_eq[:, -solver.n_par]\
+                                              - elim_coeff.T@block[:interval_width - solver.n_dim, solver.n_par:], (0, solver.n_coeff))
         
         return (i + 1, data, par_eq), elim_coeff
     
-    _, data, par_eq = jax.lax.scan(f=loop_body, init=(0, J.data, par_eq), xs=None, length=colloc_solver.n_mesh_point)[0]
-    data = data.at[-colloc_solver.n_par * colloc_solver.n:].set(par_eq.ravel())
+    _, data, par_eq = jax.lax.scan(f=loop_body, init=(0, J.data, par_eq), xs=None, length=solver.n_mesh_point)[0]
+    data = data.at[-solver.n_par * solver.n:].set(par_eq.ravel())
     
     J.data = data
     return J
 
 @jax.jit
-def elim2(colloc_solver, J):
+def elim2(solver, J):
 
-    interval_width = colloc_solver.n_colloc_point * colloc_solver.n_dim
-    block_size = (interval_width + colloc_solver.n_dim + colloc_solver.n_par) * interval_width
-    offset = (interval_width + colloc_solver.n_dim + colloc_solver.n_par) * colloc_solver.n_dim
-    ind_base = np.mgrid[interval_width - colloc_solver.n_dim:interval_width, :colloc_solver.n_dim].reshape((2, colloc_solver.n_dim * colloc_solver.n_dim)).T
-    par_eq = J.data[-colloc_solver.n * colloc_solver.n_par:].reshape((colloc_solver.n_par, colloc_solver.n))
+    interval_width = solver.n_colloc_point * solver.n_dim
+    block_size = (interval_width + solver.n_dim + solver.n_par) * interval_width
+    offset = (interval_width + solver.n_dim + solver.n_par) * solver.n_dim
+    ind_base = np.mgrid[interval_width - solver.n_dim:interval_width, :solver.n_dim].reshape((2, solver.n_dim * solver.n_dim)).T
+    par_eq = J.data[-solver.n * solver.n_par:].reshape((solver.n_par, solver.n))
     
-    block = J.data[block_size - offset:block_size].reshape((colloc_solver.n_dim, interval_width + colloc_solver.n_dim + colloc_solver.n_par))
-    lu, _, p = jax.lax.linalg.lu(block[:, -colloc_solver.n_dim - colloc_solver.n_par:-colloc_solver.n_par])
+    block = J.data[block_size - offset:block_size].reshape((solver.n_dim, interval_width + solver.n_dim + solver.n_par))
+    lu, _, p = jax.lax.linalg.lu(block[:, -solver.n_dim - solver.n_par:-solver.n_par])
     L = np.tril(lu, k=-1).at[np.diag_indices(lu.shape[0])].set(1)
     U = np.triu(lu)
     block = jax.scipy.linalg.solve_triangular(L, block[p], lower=True)
     J.data = J.data.at[block_size - offset:block_size].set(block.ravel())
-    block_left = block[:, :colloc_solver.n_dim]
-    block_right = block[:, -colloc_solver.n_par:]
+    block_left = block[:, :solver.n_dim]
+    block_right = block[:, -solver.n_par:]
     
     def loop_body(carry, _):
         
         i, data, U_prev, block_left, block_right, par_eq = carry
         block_start = i * block_size
         
-        block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width + colloc_solver.n_dim), (colloc_solver.n_par, colloc_solver.n_dim))
+        block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width + solver.n_dim), (solver.n_par, solver.n_dim))
         elim_coeff = jax.scipy.linalg.solve_triangular(U_prev.T, block_par_eq.T, lower=True)
-        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@U_prev, (0, i * interval_width + colloc_solver.n_dim))
-        par_eq = jax.lax.dynamic_update_slice(par_eq, jax.lax.dynamic_slice(par_eq, (0, 0), (colloc_solver.n_par, colloc_solver.n_dim))\
+        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@U_prev, (0, i * interval_width + solver.n_dim))
+        par_eq = jax.lax.dynamic_update_slice(par_eq, jax.lax.dynamic_slice(par_eq, (0, 0), (solver.n_par, solver.n_dim))\
                                               - elim_coeff.T@block_left, (0, 0))
-        par_eq = par_eq.at[:, -colloc_solver.n_par:].add(-elim_coeff.T@block_right)
+        par_eq = par_eq.at[:, -solver.n_par:].add(-elim_coeff.T@block_right)
         
-        block = jax.lax.dynamic_slice(data, (block_start + block_size - offset,), (offset,)).reshape((colloc_solver.n_dim, interval_width + colloc_solver.n_dim + colloc_solver.n_par))
-        elim_coeff = jax.scipy.linalg.solve_triangular(U_prev.T, block[:, :colloc_solver.n_dim].T, lower=True)
-        block = block.at[:, :colloc_solver.n_dim].add(-elim_coeff.T@U_prev)
-        block = block.at[:, -colloc_solver.n_par:].add(-elim_coeff.T@block_right)
+        block = jax.lax.dynamic_slice(data, (block_start + block_size - offset,), (offset,)).reshape((solver.n_dim, interval_width + solver.n_dim + solver.n_par))
+        elim_coeff = jax.scipy.linalg.solve_triangular(U_prev.T, block[:, :solver.n_dim].T, lower=True)
+        block = block.at[:, :solver.n_dim].add(-elim_coeff.T@U_prev)
+        block = block.at[:, -solver.n_par:].add(-elim_coeff.T@block_right)
         block_left = -elim_coeff.T@block_left
         
-        lu, _, p = jax.lax.linalg.lu(block[:, -colloc_solver.n_dim - colloc_solver.n_par:-colloc_solver.n_par])
+        lu, _, p = jax.lax.linalg.lu(block[:, -solver.n_dim - solver.n_par:-solver.n_par])
         L = np.tril(lu, k=-1).at[np.diag_indices(lu.shape[0])].set(1)
         U = np.triu(lu)
         block = jax.scipy.linalg.solve_triangular(L, block[p], lower=True)
         data = jax.lax.dynamic_update_slice(data, block.ravel(), (block_start + block_size - offset,))
         block_left = jax.scipy.linalg.solve_triangular(L, block_left[p], lower=True)
-        block_right = block[:, -colloc_solver.n_par:]
+        block_right = block[:, -solver.n_par:]
         
         return (i + 1, data, U, block_left, block_right, par_eq), (block_left, ind_base.at[:, 0].add(i * interval_width))
         
-    carry, mat = jax.lax.scan(f=loop_body, init=(1, J.data, U, block_left, block_right, par_eq), xs=None, length=colloc_solver.n_mesh_point - 2)
+    carry, mat = jax.lax.scan(f=loop_body, init=(1, J.data, U, block_left, block_right, par_eq), xs=None, length=solver.n_mesh_point - 2)
     i, data, U_prev, block_left, block_right, par_eq = carry
     block_start = i * block_size
     
-    block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width + colloc_solver.n_dim), (colloc_solver.n_par, colloc_solver.n_dim))
+    block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width + solver.n_dim), (solver.n_par, solver.n_dim))
     elim_coeff = jax.scipy.linalg.solve_triangular(U_prev.T, block_par_eq.T, lower=True)
-    par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@U_prev, (0, i * interval_width + colloc_solver.n_dim))
-    par_eq = jax.lax.dynamic_update_slice(par_eq, jax.lax.dynamic_slice(par_eq, (0, 0), (colloc_solver.n_par, colloc_solver.n_dim))\
+    par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq - elim_coeff.T@U_prev, (0, i * interval_width + solver.n_dim))
+    par_eq = jax.lax.dynamic_update_slice(par_eq, jax.lax.dynamic_slice(par_eq, (0, 0), (solver.n_par, solver.n_dim))\
                                           - elim_coeff.T@block_left, (0, 0))
-    par_eq = par_eq.at[:, -colloc_solver.n_par:].add(-elim_coeff.T@block_right)
+    par_eq = par_eq.at[:, -solver.n_par:].add(-elim_coeff.T@block_right)
     
-    block = jax.lax.dynamic_slice(data, (block_start + block_size - offset,), (offset,)).reshape((colloc_solver.n_dim, interval_width + colloc_solver.n_dim + colloc_solver.n_par))
-    elim_coeff = jax.scipy.linalg.solve_triangular(U_prev.T, block[:, :colloc_solver.n_dim].T, lower=True)
-    block = block.at[:, :colloc_solver.n_dim].add(-elim_coeff.T@U_prev)
-    block = block.at[:, -colloc_solver.n_par:].add(-elim_coeff.T@block_right)
+    block = jax.lax.dynamic_slice(data, (block_start + block_size - offset,), (offset,)).reshape((solver.n_dim, interval_width + solver.n_dim + solver.n_par))
+    elim_coeff = jax.scipy.linalg.solve_triangular(U_prev.T, block[:, :solver.n_dim].T, lower=True)
+    block = block.at[:, :solver.n_dim].add(-elim_coeff.T@U_prev)
+    block = block.at[:, -solver.n_par:].add(-elim_coeff.T@block_right)
     block_left = -elim_coeff.T@block_left
     data = jax.lax.dynamic_update_slice(data, block.ravel(), (block_start + block_size - offset,))
     
-    data = data.at[-colloc_solver.n_par * colloc_solver.n:].set(par_eq.ravel())
+    data = data.at[-solver.n_par * solver.n:].set(par_eq.ravel())
     data = np.concatenate((data, mat[0].ravel(), block_left.ravel()))
     indices = np.vstack((J.indices, np.vstack(mat[1]), ind_base.at[:, 0].add(i * interval_width)))
     
-    return jax.experimental.sparse.BCOO((data, indices), shape=(colloc_solver.n, colloc_solver.n)).sort_indices()
+    return jax.experimental.sparse.BCOO((data, indices), shape=(solver.n, solver.n)).sort_indices()
 
 @jax.jit
-def compute_monodromy(colloc_solver):
+def compute_monodromy(solver):
     
-    J = colloc_solver._jac()
-    J = elim1(colloc_solver, J)
-    J = elim2(colloc_solver, J)
+    J = solver._jac()
+    J = elim1(solver, J)
+    J = elim2(solver, J)
     
-    interval_width = colloc_solver.n_colloc_point * colloc_solver.n_dim
-    block_size = (interval_width + colloc_solver.n_dim + colloc_solver.n_par) * interval_width
+    interval_width = solver.n_colloc_point * solver.n_dim
+    block_size = (interval_width + solver.n_dim + solver.n_par) * interval_width
     i = block_size * (solver.n_mesh_point - 1) + solver.n_dim**2 * (solver.n_mesh_point - 2)\
       + (block_size - solver.n_dim * (interval_width + solver.n_dim + solver.n_par))
     
     rows_A = J.data[i:i + solver.n_dim**2 + solver.n_dim*(interval_width + solver.n_dim + solver.n_par)].reshape((solver.n_dim, interval_width + 2 * solver.n_dim + solver.n_par))
-    A0 = rows_A[:, :colloc_solver.n_dim]
+    A0 = rows_A[:, :solver.n_dim]
     A1 = rows_A[:, -solver.n_dim - solver.n_par:-solver.n_par]
     
     return np.linalg.solve(-A1, A0)
 
-def compute_LL(solver0:
+def compute_LL(solver, model, floquet_multiplier_threshold=0.8):
 
     LL = 0
-    LL -= 300 * (p0 - 1)**2
-    LL -= 300 * 1 / (np.linalg.norm(model.f_red(0, y0[:, -1], reaction_consts=reaction_consts_0)))
+    LL -= 300 * (solver.p[0] - 1)**2
+    LL -= 1 / (100 * np.linalg.norm(model.f_red(0, solver.y[:, -1], reaction_consts=solver.args[0]))**2)
 
-    M = compute_mondromy(solver)
+    M = compute_monodromy(solver)
     floquet_multipliers, evecs = np.linalg.eig(M)
     large_multipliers = floquet_multipliers[np.abs(floquet_multipliers) > floquet_multiplier_threshold]
-    large_evecs = evecs[:, floquet_multipliers[np.abs(floquet_multipliers) > floquet_multiplier_threshold)]]
+    large_evecs = evecs[:, np.abs(floquet_multipliers) > floquet_multiplier_threshold]
+    abs_multipliers = np.abs(large_multipliers)
+    sorted_indices = np.argsort(abs_multipliers)
 
-    if large_multipliers.shape[0] > 1:
+    if abs_multipliers[sorted_indices[-1]] > 1:
+        LL -= 100 * (floquet_multiplier_threshold - abs_multipliers[sorted_indices[-1]])**2
+    elif abs_multipliers.shape[0] > 1:
+        
+        mask = np.max(np.min(solver.y[:, 0] / np.abs(large_evecs).T, axis=1) * np.abs(large_evecs), axis=0) > 1e-4
 
-        abs_multipliers = np.abs(large_multipliers)
-        sorted_indices = np.argsort(abs_multipliers)
-    
-        if abs_multipliers[sorted_indices[-1] > 1]:
-            LL -= 100 * (floquet_multiplier_threshold - abs_multipliers[sorted_indices[-1])**2
-        else:
-            mask = np.max(np.min(solver.y[:, 0] / np.abs(large_evecs).T, axis=1), axis=0)
-            LL -= 100 * (floquet_multiplier_threshold - np.max(abs_multipliers[mask]))**2
+        if np.sum(mask) > 1:
+
+            masked = abs_multipliers[mask]
+            masked = np.sort(masked)
+            LL -= 100 * (floquet_multiplier_threshold - masked[-2])**2
 
     return LL
+
+def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-3, maxiter=1000):
+
+    i = 0
+    y_out = [solver.y]
+    p_out = [solver.p]
+    direction_rhs = numpy.zeros(solver.y.size + solver.p.size)
+    direction_rhs[-1] = 1
+
+    solver._superLU()
+    direction = solver.jac_LU.solve(direction_rhs)
+
+    solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
+    solver.p = solver.p + direction[solver.n_coeff:] * step_size
+
+    args = list(solver.args)
+    args[0] = direction
+    args[1] = solver.y.ravel(order="F")
+    args[2] = solver.p
+    solver.args = tuple(args)
+
+    while p_out[-1][-1] < p_stop and i < maxiter:
+
+        i += 1
+        solver.solve()
+
+        if solver.success:
+            y_out.append(solver.y)
+            p_out.append(solver.p)
+
+            if solver.n_iter == 1:
+                step_size *= 2
+
+            direction = solver.jac_LU.solve(direction_rhs)
+            
+            solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
+            solver.p = solver.p + direction[solver.n_coeff:] * step_size
+
+            args = list(solver.args)
+            args[0] = direction
+            args[1] = solver.y.ravel(order="F")
+            args[2] = solver.p
+            solver.args = tuple(args)
+
+        elif step_size > min_step_size:
+            step_size /= 2
+        else:
+            raise RuntimeError("Continuation step size decreased below threshold of %s"%(min_step_size))
+
+    if i >= maxiter and p_out[-1][-1] < p_stop:
+        raise RuntimeError("Continuation iterations exceeded %d"%(maxiter))
+
+    return np.array(y_out), np.array(p_out)
+
 
 def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
 
@@ -255,7 +312,7 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
 
 
     solver = colloc(f, phase_condition, y_out[-1], np.array([p_out[-1]]), args=(model.reaction_consts, model.a0, max_amplitude_species))
-    LL = compute_LL(solver)
+    LL = compute_LL(solver, model)
 
     #_, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
     #dp = dp * reaction_consts_0
@@ -272,6 +329,7 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
         i += 1
 
         print("iteration %d"%(i), flush=True)
+        print("Log likelihood %.5f"%(LL), flush=True)
         print("accepted:%d rejected:%d failed:%d"%(accepted, rejected, failed), flush=True)
         print("period: %.5f"%(p_out[-1]), flush=True)
         
@@ -302,7 +360,7 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
             #print("Accept: %s"%(False))
             continue
             
-        LL_propose = compute_LL(solver)
+        LL_propose = compute_LL(solver, model)
             
         #_, dp_propose = compute_sensitivity_boundary(solver.y[:, 0], solver.y[:, -1], solver.p[0], reaction_consts_propose, max_amplitude_species, M=M_propose)
         #u, s, vh = np.linalg.svd(dp_propose)
