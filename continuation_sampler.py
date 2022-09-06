@@ -15,32 +15,32 @@ K = np.array(numpy.loadtxt(path + "/K.txt", dtype=numpy.int64))
 S = np.array(numpy.loadtxt(path + "/S.txt", dtype=numpy.int64))
 orbits = np.array([np.ravel(np.load("candidate_orbit_%d.npy"%(i))) for i in range(41)])
 
-@jax.jit
-def f_M(t, y, model):
-    
-    ydot = np.zeros_like(y)
-    ydot = ydot.at[:KaiODE.n_dim - KaiODE.n_conserve].set(model.f_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve]))
-    ydot = ydot.at[KaiODE.n_dim - KaiODE.n_conserve:].set((model.jac_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve])\
-                                                          @np.reshape(y[KaiODE.n_dim - KaiODE.n_conserve:], 
-                                                                      (KaiODE.n_dim - KaiODE.n_conserve, ydot.shape[0] // (KaiODE.n_dim - KaiODE.n_conserve) - 1), order="F")).ravel(order="F"))
-    
-    return ydot
-
-jac_M = jax.jit(jax.jacfwd(f_M, argnums=1))
-
-@jax.jit
-def f_sens_fwd(t, y, model):
-    
-    ydot = np.zeros_like(y)
-    Jy = model.jac_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts)
-    Jp = jax.jacfwd(model.f_red, argnums=2)(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts)
-    
-    ydot = ydot.at[:KaiODE.n_dim - KaiODE.n_conserve].set(model.f_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts))
-    ydot = ydot.at[KaiODE.n_dim - KaiODE.n_conserve:].set(np.ravel(Jy@y[KaiODE.n_dim - KaiODE.n_conserve:].reshape((KaiODE.n_dim - KaiODE.n_conserve, 50), order="F") + Jp, order="F"))
-    
-    return ydot
-
-jac_sens = jax.jit(jax.jacfwd(f_sens_fwd, argnums=1))
+# @jax.jit
+# def f_M(t, y, model):
+#     
+#     ydot = np.zeros_like(y)
+#     ydot = ydot.at[:KaiODE.n_dim - KaiODE.n_conserve].set(model.f_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve]))
+#     ydot = ydot.at[KaiODE.n_dim - KaiODE.n_conserve:].set((model.jac_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve])\
+#                                                           @np.reshape(y[KaiODE.n_dim - KaiODE.n_conserve:], 
+#                                                                       (KaiODE.n_dim - KaiODE.n_conserve, ydot.shape[0] // (KaiODE.n_dim - KaiODE.n_conserve) - 1), order="F")).ravel(order="F"))
+#     
+#     return ydot
+# 
+# jac_M = jax.jit(jax.jacfwd(f_M, argnums=1))
+# 
+# @jax.jit
+# def f_sens_fwd(t, y, model):
+#     
+#     ydot = np.zeros_like(y)
+#     Jy = model.jac_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts)
+#     Jp = jax.jacfwd(model.f_red, argnums=2)(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts)
+#     
+#     ydot = ydot.at[:KaiODE.n_dim - KaiODE.n_conserve].set(model.f_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts))
+#     ydot = ydot.at[KaiODE.n_dim - KaiODE.n_conserve:].set(np.ravel(Jy@y[KaiODE.n_dim - KaiODE.n_conserve:].reshape((KaiODE.n_dim - KaiODE.n_conserve, 50), order="F") + Jp, order="F"))
+#     
+#     return ydot
+# 
+# jac_sens = jax.jit(jax.jacfwd(f_sens_fwd, argnums=1))
 
 # def compute_monodromy(y0, period, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.0):
     
@@ -50,35 +50,35 @@ jac_sens = jax.jit(jax.jacfwd(f_sens_fwd, argnums=1))
     
 #     return traj
 
-def compute_sensitivity(y0, period, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.0):
-
-    model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
-    ys_0 = np.concatenate([y0, np.zeros(y0.shape[0] * reaction_consts.shape[0])])
-    traj = scipy.integrate.solve_ivp(fun=f_sens_fwd, jac=jac_sens, t_span=(0, period), y0=ys_0, method="BDF", args=(model,), atol=1e-6, rtol=1e-4)
-    
-    return traj
-
-def compute_sensitivity_boundary(ya, yb, period, reaction_consts, max_amplitude_species, a0=0.6, c0=3.5, ATPfrac=1.0, M=None, sens=None):
-
-    model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
-                   
-    if M is None:
-        M = compute_monodromy(ya, period, reaction_consts, a0, c0, ATPfrac).y[KaiODE.n_dim - KaiODE.n_conserve:, -1].reshape((KaiODE.n_dim - KaiODE.n_conserve, KaiODE.n_dim - KaiODE.n_conserve), order="F")
-        
-    if sens is None:
-        sens = compute_sensitivity(ya, period, reaction_consts, a0, c0, ATPfrac).y[KaiODE.n_dim - KaiODE.n_conserve:, -1].reshape((KaiODE.n_dim - KaiODE.n_conserve, reaction_consts.shape[0]), order="F")
-        
-    J = np.zeros((M.shape[0] + 1, M.shape[0] + 1))
-    J = J.at[:M.shape[0], :M.shape[0]].set(M)
-    J = J.at[np.diag_indices(M.shape[0])].add(-1)
-    J = J.at[-1, :KaiODE.n_dim - KaiODE.n_conserve].set(model.jac_red(0, ya)[max_amplitude_species, :])
-    J = J.at[:KaiODE.n_dim - KaiODE.n_conserve, -1].set(model.f_red(0, yb))
-    r = np.vstack([sens,
-                  jax.jacfwd(model.f_red, argnums=2)(0, ya, model.reaction_consts)[max_amplitude_species, :]])
-    
-    sol = np.linalg.solve(J, -r)
-    
-    return sol[:KaiODE.n_dim - KaiODE.n_conserve, :], sol[KaiODE.n_dim - KaiODE.n_conserve:, :]
+# def compute_sensitivity(y0, period, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.0):
+# 
+#     model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
+#     ys_0 = np.concatenate([y0, np.zeros(y0.shape[0] * reaction_consts.shape[0])])
+#     traj = scipy.integrate.solve_ivp(fun=f_sens_fwd, jac=jac_sens, t_span=(0, period), y0=ys_0, method="BDF", args=(model,), atol=1e-6, rtol=1e-4)
+#     
+#     return traj
+# 
+# def compute_sensitivity_boundary(ya, yb, period, reaction_consts, max_amplitude_species, a0=0.6, c0=3.5, ATPfrac=1.0, M=None, sens=None):
+# 
+#     model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
+#                    
+#     if M is None:
+#         M = compute_monodromy(ya, period, reaction_consts, a0, c0, ATPfrac).y[KaiODE.n_dim - KaiODE.n_conserve:, -1].reshape((KaiODE.n_dim - KaiODE.n_conserve, KaiODE.n_dim - KaiODE.n_conserve), order="F")
+#         
+#     if sens is None:
+#         sens = compute_sensitivity(ya, period, reaction_consts, a0, c0, ATPfrac).y[KaiODE.n_dim - KaiODE.n_conserve:, -1].reshape((KaiODE.n_dim - KaiODE.n_conserve, reaction_consts.shape[0]), order="F")
+#         
+#     J = np.zeros((M.shape[0] + 1, M.shape[0] + 1))
+#     J = J.at[:M.shape[0], :M.shape[0]].set(M)
+#     J = J.at[np.diag_indices(M.shape[0])].add(-1)
+#     J = J.at[-1, :KaiODE.n_dim - KaiODE.n_conserve].set(model.jac_red(0, ya)[max_amplitude_species, :])
+#     J = J.at[:KaiODE.n_dim - KaiODE.n_conserve, -1].set(model.f_red(0, yb))
+#     r = np.vstack([sens,
+#                   jax.jacfwd(model.f_red, argnums=2)(0, ya, model.reaction_consts)[max_amplitude_species, :]])
+#     
+#     sol = np.linalg.solve(J, -r)
+#     
+#     return sol[:KaiODE.n_dim - KaiODE.n_conserve, :], sol[KaiODE.n_dim - KaiODE.n_conserve:, :]
 
 @jax.jit
 def elim1(solver, J=None):
@@ -205,11 +205,9 @@ def compute_monodromy(solver):
     
     return np.linalg.solve(-A1, A0)
 
-def compute_LL(solver, model, floquet_multiplier_threshold=0.8):
+def LL_monodromy(solver, floquet_multiplier_threshold=0.8):
 
     LL = 0
-    LL -= 300 * (solver.p[0] - 1)**2
-    LL -= 1 / (100 * np.linalg.norm(model.f_red(0, solver.y[:, -1], reaction_consts=solver.args[0]))**2)
 
     M = compute_monodromy(solver)
     floquet_multipliers, evecs = np.linalg.eig(M)
@@ -232,7 +230,19 @@ def compute_LL(solver, model, floquet_multiplier_threshold=0.8):
 
     return LL
 
-def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-3, maxiter=1000):
+def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
+
+    LL = 0
+    LL -= 300 * (solver1.p[0] - 1)**2
+    LL -= 200 * (solver2.p[0] - 1)**2
+    LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver1.y[:, 0], solver1.p, *solver1.args)))**2)
+    LL -= 1 / (100 * np.linalg.norm(solver1.f(0, solver2.y[:, 0], solver2.p, *solver2.args)))**2)
+    LL += LL_monodromy(solver1, floquet_multiplier_threshold)
+    LL += LL_monodromy(solver2, floquet_multiplier_threshold)
+
+    return LL
+
+def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=1000):
 
     i = 0
     y_out = [solver.y]
@@ -285,38 +295,52 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-3, maxiter=100
 
     return np.array(y_out), np.array(p_out)
 
+@jax.jit
+def f_rc(t, y, p, model, reaction_consts_propose, a0, max_amplitude_species):
+    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts_propose)
 
-def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
+@jax.jit
+def fp_rc(t, y, p, model, reaction_consts_propose, a0, max_amplitude_species):
+    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts_propose)[max_amplitude_species]])
 
-    floquet_multiplier_threshold = 7e-1
+@jax.jit 
+def f_a(t, y, p, continuation_direction, y_guess, p_guess, model, max_amplitude_species):
+    return p[0] * model.f_red(t, y, a0=p[1])
+
+@jax.jit
+def fp_a(t, y, p, continuation_direction, y_guess, p_guess, model, max_amplitude_species):
+    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], a0=p[1])[max_amplitude_species],
+                     p[1] - p_guess[1]])
+
+def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
+
+    a0 = 0.6
+    a1 = 1.2
     if seed is None:
         seed = time.time_ns()
         
     key = jax.random.PRNGKey(seed)
-    
-    y_out = [y0]
-    p_out = [p0]
-    dp_out = []
+
+    max_amplitude_species = np.argmax(np.max(y0, axis=1) - np.min(y0, axis=1))
+
+    model = KaiODE(reaction_consts_0)
+    p0_a = np.array([period0, a0])
+    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size, np.size(period0) + 1).at[-1].set(1), y0, p0_a, model, max_amplitude_species))
+
+    y_acont, p_acont = continuation(solvera, a1)
+
+    y_out = [[y0, y_acont[-1]]]
+    period_out = [[period0, p_acont[-1, 0]]]
+    dperiod_out = []
     reaction_consts_out = [reaction_consts_0]
     
-    max_amplitude_species = np.argmax(np.max(y_out[-1], axis=1) - np.min(y_out[-1], axis=1))
-    model = KaiODE(reaction_consts_0)
-
-    @jax.jit
-    def phase_condition(t, y, p, reaction_consts, a0, max_amplitude_species):
-        return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts, a0)[max_amplitude_species]])
-    
-    @jax.jit
-    def f(t, y, p, reaction_consts, a0, max_amplitude_species):
-        return p[0] * model.f_red(t, y, reaction_consts, a0)
-
-
-    solver = colloc(f, phase_condition, y_out[-1], np.array([p_out[-1]]), args=(model.reaction_consts, model.a0, max_amplitude_species))
-    LL = compute_LL(solver, model)
+    solver1 = colloc(f_rc, fp_rc, y0, np.array([period0]), args=(model, model.reaction_consts, a0, max_amplitude_species))
+    solver2 = colloc(f_rc, fp_rc, y_acont[-1], p_acont[-1, 0], args=(model, model.reaction_consts, p_acont[-1, 0], max_amplitude_species))
+    LL = compute_LL(solver1, solver2, model)
 
     #_, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
     #dp = dp * reaction_consts_0
-    #dp_out.append(dp)
+    #dperiod_out.append(dp)
     
     i = 0
 
@@ -331,10 +355,10 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
         print("iteration %d"%(i), flush=True)
         print("Log likelihood %.5f"%(LL), flush=True)
         print("accepted:%d rejected:%d failed:%d"%(accepted, rejected, failed), flush=True)
-        print("period: %.5f"%(p_out[-1]), flush=True)
+        print("period: %.5f"%(period_out[-1]), flush=True)
         
         key, subkey = jax.random.split(key)
-        #u, s, vh = np.linalg.svd(dp_out[-1])
+        #u, s, vh = np.linalg.svd(dperiod_out[-1])
         randn = jax.random.normal(subkey, shape=(reaction_consts_0.shape[0],))
         #s_full = np.zeros_like(reaction_consts_0).at[:s.shape[0]].set(s)
         #sigma = step_size / (1 + s_full)
@@ -345,24 +369,30 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
         reaction_consts_propose = np.exp(np.log(reaction_consts_out[-1]) + step)
         max_amplitude_species = np.argmax(np.max(y_out[-1], axis=1) - np.min(y_out[-1], axis=1))
    
-        solver.success = False
-        solver.y = y_out[-1]
-        solver.p = solver.p.at[0].set(p_out[-1])
-        solver.args = (reaction_consts_propose, model.a0, max_amplitude_species)
-        solver.solve(atol=1e-9)
+        solver1.success = False
+        solver1.y = y_out[-1][0]
+        solver1.p = solver1.p.at[0].set(period_out[-1][0])
+        solver1.args = (model, reaction_consts_propose, a0, max_amplitude_species)
+        solver1.solve(atol=1e-9)
+
+        solver2.success = False
+        solver2.y = y_out[-1][1]
+        solver2.p = solver2.p.at[0].set(period_out[-1][1])
+        solver2.args = (model, reaction_consts_propose, p_acont[-1, 0], max_amplitude_species)
+        solver2.solve(atol=1e-9)
         
-        if not solver.success:
+        if not (solver1.success and solver2.success):
             y_out.append(y_out[-1])
-            p_out.append(p_out[-1])
+            period_out.append(period_out[-1])
             reaction_consts_out.append(reaction_consts_out[-1])
             failed += 1
-            #dp_out.append(dp_out[-1])
+            #dperiod_out.append(dperiod_out[-1])
             #print("Accept: %s"%(False))
             continue
             
-        LL_propose = compute_LL(solver, model)
+        LL_propose = compute_LL(solver1, solver2, model)
             
-        #_, dp_propose = compute_sensitivity_boundary(solver.y[:, 0], solver.y[:, -1], solver.p[0], reaction_consts_propose, max_amplitude_species, M=M_propose)
+        #_, dp_propose = compute_sensitivity_boundary(solver1.y[:, 0], solver1.y[:, -1], solver1.p[0], reaction_consts_propose, max_amplitude_species, M=M_propose)
         #u, s, vh = np.linalg.svd(dp_propose)
         #s_full = np.zeros_like(reaction_consts_0).at[:s.shape[0]].set(s)
         #sigma = step_size / (1 + s_full)
@@ -380,18 +410,18 @@ def sample(y0, p0, reaction_consts_0, step_size=1e-1, maxiter=1000, seed=None):
         
         if accept:
             
-            y_out.append(solver.y)
-            p_out.append(solver.p[0])
+            y_out.append([solver1.y, solver2.y])
+            period_out.append([solver1.p[0], solver2.p[0]])
             reaction_consts_out.append(reaction_consts_propose)
-            #dp_out.append(dp_propose)
+            #dperiod_out.append(dp_propose)
             LL = LL_propose
             accepted += 1
 
         else:
 
             y_out.append(y_out[-1])
-            p_out.append(p_out[-1])
+            period_out.append(period_out[-1])
             reaction_consts_out.append(reaction_consts_out[-1])
             rejected += 1
 
-    return np.array(y_out), np.array(p_out), np.array(dp_out), np.array(reaction_consts_out)
+    return np.array(y_out), np.array(period_out), np.array(dperiod_out), np.array(reaction_consts_out)
