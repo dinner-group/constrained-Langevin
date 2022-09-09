@@ -173,7 +173,8 @@ class colloc:
         self.err = np.linalg.norm(r)
     
     def solve(self, atol=1e-6, maxiter=10):
-       
+      
+        self.success = False
         self.err = np.linalg.norm(self.resid())
         self.n_iter = 0
         

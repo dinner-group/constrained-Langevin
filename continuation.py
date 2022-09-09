@@ -241,7 +241,7 @@ def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
     
     return LL
 
-def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=1000):
+def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_size=1, maxiter=1000):
 
     i = 0
     y_out = [solver.y]
@@ -264,7 +264,11 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=100
     while p_out[-1][-1] < p_stop and i < maxiter:
 
         i += 1
-        solver.solve()
+    
+        try:
+            solver.solve()
+        except RuntimeError:
+            solver.success = False
 
         if solver.success:
             y_out.append(solver.y)
@@ -286,6 +290,8 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=100
 
         elif step_size > min_step_size:
             step_size /= 2
+            solver.y = y_out[-1]
+            solver.p = p_out[-1]
         else:
             raise RuntimeError("Continuation step size decreased below threshold of %s"%(min_step_size))
 
