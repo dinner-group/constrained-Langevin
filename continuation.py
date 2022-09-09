@@ -324,7 +324,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
 
     model = KaiODE(reaction_consts_0)
     p0_a = np.array([period0, a0])
-    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1), y0, p0_a, model, max_amplitude_species))
+    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1), y0.ravel(order="F"), p0_a, model, max_amplitude_species))
 
     y_acont, p_acont = continuation(solvera, a1)
 
