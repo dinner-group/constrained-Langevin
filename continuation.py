@@ -13,7 +13,6 @@ jax.config.update("jax_enable_x64", True)
 path = os.path.dirname(__file__)
 K = np.array(numpy.loadtxt(path + "/K.txt", dtype=numpy.int64))
 S = np.array(numpy.loadtxt(path + "/S.txt", dtype=numpy.int64))
-orbits = np.array([np.ravel(np.load("candidate_orbit_%d.npy"%(i))) for i in range(41)])
 
 # @jax.jit
 # def f_M(t, y, model):
@@ -271,7 +270,7 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, maxiter=100
             y_out.append(solver.y)
             p_out.append(solver.p)
 
-            if solver.n_iter == 1:
+            if solver.n_iter <= 3:
                 step_size *= 2
 
             direction = solver.jac_LU.solve(direction_rhs)
