@@ -56,7 +56,20 @@ def potential(q):
     E += np.where(np.abs(evals[ind_repeated_real].imag) < 1e2, 0, 1e2 - np.abs(evals[ind_repeated_real].imag))**2
     
     log_k = log_rates(q)
-    E += np.linalg.norm(np.where(q[50:] < -20, q[50:] + 20, 0))**2
+    E += np.linalg.norm(np.where(q[50:] < -10, q[50:] + 10, 0))**2
+
+    pU_total = np.log(np.exp(q[50:])[np.array([0, 1])].sum())
+    E += np.where(pU_total < -2, pU_total + 2, 0)**2
+
+    pT_total = np.log(np.exp(q[50:])[np.array([2, 3])].sum())
+    E += np.where(pT_total < -2, pT_total + 2, 0)**2
+
+    pD_total = np.log(np.exp(q[50:])[np.array([4, 5, 8, 9, 12, 13])].sum())
+    E += np.where(pD_total < -2, pD_total + 2, 0)**2
+    
+    pS_total = np.log(np.exp(q[50:])[np.array([6, 7, 10, 11, 14, 15])].sum())
+    E += np.where(pS_total < -2, pS_total + 2, 0)**2
+
     E += np.linalg.norm(np.where(log_k < -20, log_k + 20, 0))**2
     E += np.linalg.norm(np.where(log_k > 22, log_k - 22, 0))**2
             
