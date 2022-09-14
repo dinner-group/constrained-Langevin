@@ -252,14 +252,15 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_si
     solver._superLU()
     direction = solver.jac_LU.solve(direction_rhs)
 
-    solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
-    solver.p = solver.p + direction[solver.n_coeff:] * step_size
-
     args = list(solver.args)
     args[0] = direction
     args[1] = solver.y.ravel(order="F")
     args[2] = solver.p
+    args[3] = step_size
     solver.args = tuple(args)
+    
+    solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
+    solver.p = solver.p + direction[solver.n_coeff:] * step_size
 
     while p_out[-1][-1] < p_stop and i < maxiter:
 
@@ -279,14 +280,15 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_si
 
             direction = solver.jac_LU.solve(direction_rhs)
             
-            solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
-            solver.p = solver.p + direction[solver.n_coeff:] * step_size
-
             args = list(solver.args)
             args[0] = direction
             args[1] = solver.y.ravel(order="F")
             args[2] = solver.p
+            args[3] = step_size
             solver.args = tuple(args)
+            
+            solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
+            solver.p = solver.p + direction[solver.n_coeff:] * step_size
 
         elif step_size > min_step_size:
             step_size /= 2
@@ -301,21 +303,26 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_si
     return np.array(y_out), np.array(p_out)
 
 @jax.jit
-def f_rc(t, y, p, model, reaction_consts_propose, a0, max_amplitude_species):
-    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts_propose, a0=a0)
-
-@jax.jit
-def fp_rc(t, y, p, model, reaction_consts_propose, a0, max_amplitude_species):
-    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts_propose, a0=a0)[max_amplitude_species]])
-
-@jax.jit 
-def f_a(t, y, p, continuation_direction, y_guess, p_guess, model, max_amplitude_species):
+def f_a(t, y, p, continuation_direction, y_prev, p_prev, ds, model, max_amplitude_species):
     return p[0] * model.f_red(t, y, a0=p[1])
 
 @jax.jit
-def fp_a(t, y, p, continuation_direction, y_guess, p_guess, model, max_amplitude_species):
+def fp_a(t, y, p, continuation_direction, y_prev, p_prev, ds, model, max_amplitude_species):
+    continuation_direction = continuation_direction / np.linalg.norm(continuation_direction)
     return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], a0=p[1])[max_amplitude_species],
-                     p[1] - p_guess[1]])
+                     (y - y_prev)@continuation_direction[:y.shape[0]] + (p - p_prev)@continuation_direction[y.shape[0]:] - ds])
+
+@jax.jit
+def f_rc(t, y, p, continuation_direction, y_prev, p_prev, ds, model, rc_direction, max_amplitude_species):
+    reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
+    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts)
+
+@jax.jit
+def fp_rc(t, y, p, continuation_direction, y_prev, p_prev, ds, model, rc_direction, max_amplitude_species):
+    continuation_direction = continuation_direction / np.linalg.norm(continuation_direction)
+    reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
+    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts)[max_amplitude_species],
+                     (y - y_prev)@continuation_direction[:y.shape[0]] + (p - p_prev)@continuation_direction[y.shape[0]:] - ds])
 
 def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
 
