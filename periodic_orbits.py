@@ -1,4 +1,4 @@
-from sampler import *
+from sna import *
 from model import *
 import scipy
 import scipy.integrate
@@ -36,7 +36,7 @@ def find_limit_cycle(rates, y0, tau0=None, perturb=True, period_rtol=1e-5, n_per
         else:
             tau0 = 100
     try:
-        int0 = scipy.integrate.solve_ivp(model.f, jac=model.jac, t_span=(0, n_periods_upper * tau0), y0=y0, t_eval=np.linspace(n_periods_lower * tau0, n_periods_upper * tau0, int(1 / period_rtol)), method="BDF", atol=1e-9, rtol=1e-6)
+        int0 = scipy.integrate.solve_ivp(model.f, jac=model.jac, t_span=(0, n_periods_upper * tau0), y0=y0, t_eval=np.linspace(n_periods_lower * tau0, n_periods_upper * tau0, int(1 / period_rtol)), method="LSODA", atol=1e-9)
     except:
         warnings.warn("Integration failed")
         return np.concatenate([np.full_like(y0, np.nan), np.array([np.nan])])

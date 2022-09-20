@@ -29,10 +29,10 @@ i = comm.Get_rank() * ntasks
 while i < (comm.Get_rank() + 1) * ntasks:
 
     j = args.start + segment_size *  comm.Get_rank() + (i - comm.Get_rank() * ntasks) * args.stride
-    print(j, traj[j, 1])
     lc = find_limit_cycle(np.exp(log_rates(traj[j, :])), np.exp(traj[j, 50:]))
     partial[i, :50] = lc[-1] * np.exp(log_rates(traj[j, :]))
     partial[i, 50:] = lc[:-1]
+    print("Fixed point %d"%(j), flush=True)
     i += 1
 
 comm.Allreduce([partial, MPI.DOUBLE], [out, MPI.DOUBLE], op=MPI.SUM)

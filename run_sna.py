@@ -1,6 +1,8 @@
-from sampler import *
+from sna import *
 
-q0 = np.array(numpy.loadtxt(path + "/q0.txt"))
+run_id = 12
+#q0 = np.array(numpy.loadtxt(path + "/q0.txt"))
+q0 = np.load("sna_run11.npy")[-1, :]
 #q0 = q0.at[np.arange(50)[np.array([0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], dtype=bool)]].add(-5)
 nsteps = 1000000
 if __name__=="__main__":
@@ -8,4 +10,4 @@ if __name__=="__main__":
     _, accept, h_arr, _, _ = out[0]
     traj = out[1]
     print("acceptance ratio: %s"%(accept.sum() / nsteps))
-    np.save("sna_run2.npy", traj)
+    np.save("sna_run%d.npy"%(run_id), traj)
