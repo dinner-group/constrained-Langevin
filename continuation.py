@@ -229,7 +229,7 @@ def LL_monodromy(solver, floquet_multiplier_threshold=0.8):
 
     return LL
 
-def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
+def compute_LL(solver1, solver2, bounds, floquet_multiplier_threshold=0.8):
 
     LL = 0
     LL -= 300 * (solver1.p[0] - 1)**2
