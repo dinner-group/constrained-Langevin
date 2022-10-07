@@ -238,6 +238,13 @@ def compute_LL(solver1, solver2, floquet_multiplier_threshold=0.8):
     LL -= 1 / (100 * np.linalg.norm(solver2.f(0, solver2.y[:, 0], solver2.p, *solver2.args))**2)
     LL += LL_monodromy(solver1, floquet_multiplier_threshold)
     LL += LL_monodromy(solver2, floquet_multiplier_threshold)
+
+    for i in range(bounds.shape[0]):
+
+        if solver1.args[0].reaction_consts[i] < bounds[i, 0]:
+            LL -= (np.log(bounds[i, 0]) - np.log(solver1.args[0].reaction_consts[i]))**2
+        elif solver1.args[0].reaction_consts[i] > bounds[i, 1]:
+            LL -= (np.log(bounds[i, 1]) - np.log(solver1.args[0].reaction_consts[i]))**2
     
     return LL
 
@@ -324,7 +331,7 @@ def fp_rc(t, y, p, continuation_direction, y_prev, p_prev, ds, model, rc_directi
     return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts)[max_amplitude_species],
                      (y - y_prev)@continuation_direction[:y.shape[0]] + (p - p_prev)@continuation_direction[y.shape[0]:] - ds])
 
-def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
+def sample(y0, period0, reaction_consts_0, bounds, step_size=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
 
     a0 = 0.6
     a1 = 1.2
@@ -337,9 +344,11 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
 
     model = KaiODE(reaction_consts_0)
     p0_a = np.array([period0, a0])
-    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1), y0.ravel(order="F"), p0_a, model, max_amplitude_species))
+    ds = 1e-2
 
-    y_acont, p_acont = continuation(solvera, a1)
+    solvera = colloc(f_a, fp_a, y0, p0_a, args=(np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1), y0.ravel(order="F"), p0_a, ds, model, max_amplitude_species))
+
+    y_acont, p_acont = continuation(solvera, a1, step_size=ds)
 
     y_out = [[y0, y_acont[-1]]]
     period_out = [[period0, p_acont[-1, 0]]]
@@ -348,7 +357,7 @@ def sample(y0, period0, reaction_consts_0, step_size=1e-1, maxiter=1000, floquet
 
     solver1 = colloc(f_rc, fp_rc, y0, np.array([period0]), args=(model, model.reaction_consts, a0, max_amplitude_species))
     solver2 = colloc(f_rc, fp_rc, y_acont[-1], np.array([p_acont[-1, 0]]), args=(model, model.reaction_consts, p_acont[-1, 1], max_amplitude_species))
-    LL = compute_LL(solver1, solver2)
+    LL = compute_LL(solver1, solver2, bounds)
 
     #_, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
     #dp = dp * reaction_consts_0
