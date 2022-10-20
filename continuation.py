@@ -1,5 +1,6 @@
 import numpy
 import scipy.integrate
+import diffrax
 import jax
 import jax.numpy as np
 from model import *
@@ -40,14 +41,6 @@ S = np.array(numpy.loadtxt(path + "/S.txt", dtype=numpy.int64))
 #     return ydot
 # 
 # jac_sens = jax.jit(jax.jacfwd(f_sens_fwd, argnums=1))
-
-# def compute_monodromy(y0, period, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.0):
-    
-#     model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
-#     yM_0 = np.concatenate([y0, np.identity(y0.shape[0]).ravel(order="F")])
-#     traj = scipy.integrate.solve_ivp(fun=f_M, jac=jac_M, t_span=(0, period), y0=yM_0, method="BDF", args=(model,), atol=1e-6, rtol=1e-4)
-    
-#     return traj
 
 # def compute_sensitivity(y0, period, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.0):
 # 
@@ -204,30 +197,29 @@ def compute_monodromy(solver):
     
     return np.linalg.solve(-A1, A0)
 
-def LL_monodromy(solver, floquet_multiplier_threshold=0.8):
+@jax.jit
+def compute_monodromy_1(y0, period, reaction_consts, a0=0.6, c0=3.5):
+
+    def rhs(t, y, args):
+        model = KaiODE(args[:-2])
+        return model.f_red(t, y, args[:model.reaction_consts.size], *args[-2:])
+        
+    term = diffrax.ODETerm(rhs)
+    integrator = diffrax.Kvaerno4()
+    stepsize_controller = diffrax.PIDController(rtol=1e-4, atol=1e-6)
+        
+    return jax.jacfwd(diffrax.diffeqsolve, argnums=5)(term, integrator, 0, solver.p[0], None, solver.y[:, 0], args=np.concatenate([reaction_consts, np.array([a0, c0])]), 
+                                                      stepsize_controller=stepsize_controller, max_steps=10000).ys[0]
+
+@jax.jit
+def LL_monodromy(y0, period, reaction_consts, a0=0.6, c0=3.5, floquet_multiplier_threshold=0.8):
 
     LL = 0
 
-    M = compute_monodromy(solver)
+    M = compute_monodromy_1(y0, period, reaction_consts, a0, c0)
     floquet_multipliers, evecs = np.linalg.eig(M)
-    large_multipliers = floquet_multipliers[np.abs(floquet_multipliers) > floquet_multiplier_threshold]
-    large_evecs = evecs[:, np.abs(floquet_multipliers) > floquet_multiplier_threshold]
-    abs_multipliers = np.abs(large_multipliers)
-    sorted_indices = np.argsort(abs_multipliers)
-
-    if abs_multipliers[sorted_indices[-1]] > 1:
-        LL -= 100 * (floquet_multiplier_threshold - abs_multipliers[sorted_indices[-1]])**2
-    elif abs_multipliers.shape[0] > 1:
-        
-        mask = np.max(np.min(solver.y[:, 0] / np.abs(large_evecs).T, axis=1) * np.abs(large_evecs), axis=0) > 1e-4
-
-        if np.sum(mask) > 1:
-
-            masked = abs_multipliers[mask]
-            masked = np.sort(masked)
-            LL -= 100 * (floquet_multiplier_threshold - masked[-2])**2
-
-    return LL
+    abs_multipliers = np.abs(floquet_multipliers)
+    LL += np.where(abs_multipliers > floquet_multiplier_threshold, 100 * (abs_multipliers - floquet_multipliers_threshold)**2, 0).sum()
 
 def compute_LL(solver1, solver2, bounds, floquet_multiplier_threshold=0.8):
 
