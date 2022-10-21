@@ -23,12 +23,12 @@ class colloc:
         self.y = y0
         self.p = p0
         self.n_dim = y0.shape[0]
-        self.n_mesh_point = y0.shape[1] // self.n_colloc_point
+        self.n_mesh_point = y0.shape[1] // colloc.n_colloc_point
         self.mesh_points = np.linspace(self.ta, self.tb, self.n_mesh_point + 1)
         self.n_par = p0.shape[0]
         self.n_coeff = y0.size
         self.n = self.n_coeff + self.n_par
-        self.n_colloc_eq = self.n_dim * self.n_mesh_point * self.n_colloc_point
+        self.n_colloc_eq = self.n_dim * self.n_mesh_point * colloc.n_colloc_point
         self.t = np.linspace(ta, tb, self.n_coeff // self.n_dim)
         self.success = False
 
@@ -68,12 +68,12 @@ class colloc:
 
         def loop_body(i, _):
 
-            poly = colloc.lagrange_poly(colloc_points[i], sub_points, y.reshape((self.n_dim, self.n_colloc_point + 1), order="F"), poly_denom)
-            poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y.reshape((self.n_dim, self.n_colloc_point + 1), order="F"), poly_denom)
+            poly = colloc.lagrange_poly(colloc_points[i], sub_points, y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F"), poly_denom)
+            poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F"), poly_denom)
 
             return i + 1, poly_grad - self.f(colloc_points[i], poly, p, *self.args)
 
-        return jax.lax.scan(f=loop_body, init=0, xs=None, length=self.n_colloc_point)[1].ravel(order="C")
+        return jax.lax.scan(f=loop_body, init=0, xs=None, length=colloc.n_colloc_point)[1].ravel(order="C")
 
     @jax.jit
     def resid(self, y=None, p=None):
@@ -84,11 +84,11 @@ class colloc:
             p = self.p
 
         i = 0
-        interval_width = self.n_colloc_point * self.n_dim
+        interval_width = colloc.n_colloc_point * self.n_dim
         
         def loop_body(i, _):
 
-            sub_points = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], self.n_colloc_point + 1)
+            sub_points = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], colloc.n_colloc_point + 1)
             colloc_points = self.mesh_points[i] + self.gauss_points * (self.mesh_points[i + 1] - self.mesh_points[i])
             interval_start = i * interval_width
             poly_denom = colloc.lagrange_poly_denom(sub_points)
@@ -111,13 +111,13 @@ class colloc:
 
         i = 0
 
-        interval_width = self.n_colloc_point * self.n_dim
+        interval_width = colloc.n_colloc_point * self.n_dim
         block_y = np.mgrid[:interval_width, :interval_width + self.n_dim].reshape((2, interval_width * (interval_width + self.n_dim))).T
         block_p = np.mgrid[:interval_width, self.n_coeff:self.n_coeff + self.n_par].reshape((2, interval_width * self.n_par)).T
 
         def loop_body(i, _):
 
-            sub_points = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], self.n_colloc_point + 1)
+            sub_points = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], colloc.n_colloc_point + 1)
             colloc_points = self.mesh_points[i] + self.gauss_points * (self.mesh_points[i + 1] - self.mesh_points[i])
             interval_start = i * interval_width
             poly_denom = colloc.lagrange_poly_denom(sub_points)
@@ -170,12 +170,12 @@ class colloc:
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
         self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
         self.p = x[self.y.size:]
-        self.err = np.linalg.norm(r)
+        self.err = np.max(r)
     
     def solve(self, atol=1e-6, maxiter=10):
       
         self.success = False
-        self.err = np.linalg.norm(self.resid())
+        self.err = np.max(self.resid())
         self.n_iter = 0
         
         while self.n_iter < maxiter and self.err >= atol:
