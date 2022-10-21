@@ -291,8 +291,8 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_si
 
         elif step_size > min_step_size:
             step_size /= 2
-            solver.y = y_out[-1]
-            solver.p = p_out[-1]
+            solver.y = y_out[-1] + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
+            solver.p = p_out[-1] + direction[solver.n_coeff:] * step_size
         else:
             raise RuntimeError("Continuation step size decreased below threshold of %s"%(min_step_size))
 
