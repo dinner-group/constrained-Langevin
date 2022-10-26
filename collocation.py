@@ -170,12 +170,12 @@ class colloc:
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
         self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
         self.p = x[self.y.size:]
-        self.err = np.max(r)
+        self.err = np.max(np.abs(r))
     
     def solve(self, atol=1e-6, maxiter=10):
       
         self.success = False
-        self.err = np.max(self.resid())
+        self.err = np.max(np.abs(self.resid()))
         self.n_iter = 0
         
         while self.n_iter < maxiter and self.err >= atol:
