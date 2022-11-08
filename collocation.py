@@ -29,6 +29,8 @@ class colloc:
         self.n_coeff = y0.size
         self.n = self.n_coeff + self.n_par
         self.n_colloc_eq = self.n_dim * self.n_mesh_point * colloc.n_colloc_point
+        self.err = np.inf
+        self.n_iter = 0
         self.t = np.linspace(ta, tb, self.n_coeff // self.n_dim)
         self.success = False
 
@@ -112,8 +114,9 @@ class colloc:
         i = 0
 
         interval_width = colloc.n_colloc_point * self.n_dim
-        block_y = np.mgrid[:interval_width, :interval_width + self.n_dim].reshape((2, interval_width * (interval_width + self.n_dim))).T
-        block_p = np.mgrid[:interval_width, self.n_coeff:self.n_coeff + self.n_par].reshape((2, interval_width * self.n_par)).T
+        block_y = np.mgrid[:interval_width + self.n_dim, :interval_width].T[:, :, np.array([1, 0])]
+        block_p = np.mgrid[self.n_coeff:self.n_coeff + self.n_par, :interval_width].T[:, :, np.array([1, 0])]
+        indices_base = np.hstack([block_y, block_p])
 
         def loop_body(i, _):
 
@@ -126,27 +129,26 @@ class colloc:
             Jy_i = jax.jacfwd(self._compute_resid_interval, argnums=0)(y_i, p, colloc_points, sub_points)
             Jp_i = jax.jacfwd(self._compute_resid_interval, argnums=1)(y_i, p, colloc_points, sub_points)
 
-            indices_y_i = block_y + interval_start
-            indices_p_i = block_p.at[:, 0].add(interval_start)
+            indices_i = indices_base.at[:, :-self.n_par].add(interval_start)
+            indices_i = indices_i.at[:, -self.n_par:, 0].add(interval_start)
 
-            data_i = np.concatenate([Jy_i.ravel(order="C"), Jp_i.ravel(order="C")])
-            indices_i = np.vstack([indices_y_i, indices_p_i])
+            data_i = np.hstack([Jy_i, Jp_i]).ravel()
+            indices_i = np.vstack(indices_i)
 
             return i + 1, (indices_i, data_i)
 
         J_colloc_eq = jax.lax.scan(f=loop_body, init=i, xs=None, length=self.n_mesh_point)
         data = np.concatenate([np.ravel(J_colloc_eq[1][1], order="C"), 
-                               np.ravel(-np.identity(self.n_dim), order="C"),
-                               np.ravel(np.identity(self.n_dim), order="C"),
-                               np.ravel(np.hstack([jax.jacfwd(self.f_p, argnums=1)(self.t, y, p, *self.args), jax.jacfwd(self.f_p, argnums=2)(self.t, y, p, *self.args)]), order="C")
+                               np.hstack([-np.identity(self.n_dim), np.identity(self.n_dim)]).ravel(order="C"),
+                               np.ravel(np.hstack([jax.jacrev(self.f_p, argnums=1)(self.t, y, p, *self.args), jax.jacrev(self.f_p, argnums=2)(self.t, y, p, *self.args)]), order="C")
                                ])
         indices = np.vstack([np.vstack(J_colloc_eq[1][0]), 
-                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, :self.n_dim].reshape((2, self.n_dim * self.n_dim)).T,
-                             np.mgrid[self.n_colloc_eq:self.n_colloc_eq + self.n_dim, self.n_coeff - self.n_dim:self.n_coeff].reshape((2, self.n_dim * self.n_dim)).T,
+                             np.vstack(np.hstack([np.mgrid[:self.n_dim, self.n_colloc_eq:self.n_colloc_eq + self.n_dim].T[:, :, np.array([1, 0])],
+                             np.mgrid[self.n_coeff - self.n_dim:self.n_coeff, self.n_colloc_eq:self.n_colloc_eq + self.n_dim].T[:, :, np.array([1, 0])]])),
                              np.mgrid[self.n_colloc_eq + self.n_dim:self.n_colloc_eq + self.n_dim + self.n_par, :self.n].reshape((2, self.n_par * self.n)).T
                              ])
 
-        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n)).sort_indices()
+        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n))
  
     def jac(self, y=None, p=None):
         
@@ -156,7 +158,8 @@ class colloc:
             p = self.p
 
         J = self._jac(y, p)
-        return scipy.sparse.csc_matrix((J.data, J.indices.T))
+        self.J = scipy.sparse.csc_matrix((J.data, J.indices.T))
+        return self.J
     
     def _superLU(self):
         
