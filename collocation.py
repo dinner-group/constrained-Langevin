@@ -73,13 +73,14 @@ class colloc:
             poly = colloc.lagrange_poly(colloc_points[i], sub_points, y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F"), poly_denom)
             poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F"), poly_denom)
 
-            return i + 1, poly_grad - self.f(colloc_points[i], poly, p, *self.args)
+            return i + 1, (poly_grad - self.f(colloc_points[i], poly, p, *self.args), poly_grad)
 
-        return jax.lax.scan(f=loop_body, init=0, xs=None, length=colloc.n_colloc_point)[1].ravel(order="C")
+        result = jax.lax.scan(f=loop_body, init=0, xs=None, length=colloc.n_colloc_point)[1]
+        return (result[0].ravel(order="C"), result[1].ravel(order="C"))
 
     @jax.jit
-    def resid(self, y=None, p=None):
-        
+    def _resid_and_scale(self, y=None, p=None):
+
         if y is None:
             y = self.y.ravel(order="F")
         if p is None:
@@ -99,9 +100,22 @@ class colloc:
 
             return i + 1, r_i
             
-        return np.concatenate([jax.lax.scan(f=loop_body, init=i, xs=None, length=self.n_mesh_point)[1].ravel(order="C"), 
+        result = jax.lax.scan(f=loop_body, init=i, xs=None, length=self.n_mesh_point)[1]
+
+        return (np.concatenate([result[0].ravel(order="C"),
                                y[self.n_coeff - self.n_dim:self.n_coeff] - y[:self.n_dim], 
-                               self.f_p(self.t, y, p, *self.args)])
+                               self.f_p(self.t, y, p, *self.args)]),
+                np.concatenate([result[1].ravel(order="C"), np.ones(self.n_dim + self.n_par)]))
+
+    @jax.jit
+    def resid(self, y=None, p=None):
+        
+        if y is None:
+            y = self.y.ravel(order="F")
+        if p is None:
+            p = self.p
+
+        return self._resid_and_scale(y, p)[0]
     
     @jax.jit
     def _jac(self, y=None, p=None):
@@ -126,8 +140,8 @@ class colloc:
             poly_denom = colloc.lagrange_poly_denom(sub_points)
             y_i = jax.lax.dynamic_slice(y, (interval_start,), (interval_width + self.n_dim,))
 
-            Jy_i = jax.jacfwd(self._compute_resid_interval, argnums=0)(y_i, p, colloc_points, sub_points)
-            Jp_i = jax.jacfwd(self._compute_resid_interval, argnums=1)(y_i, p, colloc_points, sub_points)
+            Jy_i = jax.jacfwd(self._compute_resid_interval, argnums=0)(y_i, p, colloc_points, sub_points)[0]
+            Jp_i = jax.jacfwd(self._compute_resid_interval, argnums=1)(y_i, p, colloc_points, sub_points)[0]
 
             indices_i = indices_base.at[:, :-self.n_par].add(interval_start)
             indices_i = indices_i.at[:, -self.n_par:, 0].add(interval_start)
@@ -165,28 +179,77 @@ class colloc:
         
         self.jac_LU = scipy.sparse.linalg.splu(self.jac())
 
-    def _newton_step(self):
-        
-        r = self.resid()
+    def _newton_step(self, r=None, scale=None):
+    
+        if r is None or scale is None:
+            r, scale = self._resid_and_scale()
+
         self._superLU()
         dx = self.jac_LU.solve(-numpy.asanyarray(r))
         x = np.concatenate([self.y.ravel(order="F"), self.p]) + dx
         self.y = x[:self.y.size].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
         self.p = x[self.y.size:]
-        self.err = np.max(np.abs(r))
+        
+        r_next, scale_next = self._resid_and_scale()
+        self.err = np.max(np.abs(r_next / (1 + scale_next)))
+        return r_next, scale_next
     
-    def solve(self, atol=1e-6, maxiter=10):
-      
+    def solve(self, tol=1e-6, maxiter=10):
+
         self.success = False
-        self.err = np.max(np.abs(self.resid()))
+        r, scale = self._resid_and_scale()
+        self.err = np.max(np.abs(r / (1 + scale)))
         self.n_iter = 0
         
-        while self.n_iter < maxiter and self.err >= atol:
+        while self.n_iter < maxiter and self.err >= tol:
             self.n_iter += 1
-            self._newton_step()
+            r, scale = self._newton_step(r, scale)
             
-        if self.err < atol:
-            self.success = True
+        self.success = self.err < tol
+
+    def damped_newton(self, tol=1e-6, predictor_trust=0.1, downhill_factor=0.01, min_damping_factor=0.01, maxiter=20):
+
+        self.success = False
+        r, scale = self._resid_and_scale()
+        self.err = np.max(np.abs(r / (1 + scale)))
+        self.n_iter = 0
+        damping_factor = 1
+        dx_prev = np.full(self.n, np.inf)
+        b = np.zeros(self.n)
+
+        while self.n_iter < maxiter and self.err > tol and damping_factor >= min_damping_factor:
+
+            self.n_iter += 1
+            self._superLU()
+            dx = self.jac_LU.solve(-numpy.asanyarray(r))
+
+            cost = np.linalg.norm(dx)**2
+            u = np.linalg.norm(dx_prev) * damping_factor / np.linalg.norm(dx - b)
+            damping_factor = np.maximum(min_damping_factor, np.minimum(u, 1))
+            x = np.concatenate([self.y.ravel(order="F"), self.p])
+            print(self.n_iter, damping_factor, self.err)
+
+            x_new = x + damping_factor * dx
+            r, scale = self._resid_and_scale(x_new[:-self.n_par], x_new[-self.n_par:])
+            cost_new = np.linalg.norm(self.jac_LU.solve(numpy.asanyarray(r)))**2
+
+            print(cost_new, (1 - 2 * damping_factor * downhill_factor) * cost)
+
+            while damping_factor >= min_damping_factor and cost_new > (1 - 2 * damping_factor * downhill_factor) * cost:
+
+                damping_factor = np.maximum(predictor_trust * damping_factor, damping_factor**2 * cost / ((2 * damping_factor - 1) * cost + cost_new))
+                print(damping_factor, (damping_factor**2 * cost) / ((2 * damping_factor - 1) * cost + cost_new), cost, cost_new)
+                x_new = x + damping_factor * dx
+                r, scale = self._resid_and_scale(x_new[:-self.n_par], x_new[-self.n_par:])
+                cost_new = np.linalg.norm(self.jac_LU.solve(numpy.asanyarray(r)))**2
+
+            self.err = np.max(np.abs(r / (1 + scale)))
+            dx_prev = dx
+            b = self.jac_LU.solve(numpy.asanyarray(r))
+            self.y = x_new[:-self.n_par].reshape((self.n_dim, self.n_coeff // self.n_dim), order="F")
+            self.p = x_new[-self.n_par:]
+
+        self.success = self.err < tol
 
     def _tree_flatten(self):
 
