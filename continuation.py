@@ -1,76 +1,16 @@
 import numpy
-import scipy.integrate
-import diffrax
 import jax
 import jax.numpy as np
+import diffrax
 from model import *
 from collocation import *
 import time
 from functools import partial
-import matplotlib.pyplot as plt
-import os
 jax.config.update("jax_enable_x64", True)
 
 path = os.path.dirname(__file__)
 K = np.array(numpy.loadtxt(path + "/K.txt", dtype=numpy.int64))
 S = np.array(numpy.loadtxt(path + "/S.txt", dtype=numpy.int64))
-
-# @jax.jit
-# def f_M(t, y, model):
-#     
-#     ydot = np.zeros_like(y)
-#     ydot = ydot.at[:KaiODE.n_dim - KaiODE.n_conserve].set(model.f_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve]))
-#     ydot = ydot.at[KaiODE.n_dim - KaiODE.n_conserve:].set((model.jac_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve])\
-#                                                           @np.reshape(y[KaiODE.n_dim - KaiODE.n_conserve:], 
-#                                                                       (KaiODE.n_dim - KaiODE.n_conserve, ydot.shape[0] // (KaiODE.n_dim - KaiODE.n_conserve) - 1), order="F")).ravel(order="F"))
-#     
-#     return ydot
-# 
-# jac_M = jax.jit(jax.jacfwd(f_M, argnums=1))
-# 
-# @jax.jit
-# def f_sens_fwd(t, y, model):
-#     
-#     ydot = np.zeros_like(y)
-#     Jy = model.jac_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts)
-#     Jp = jax.jacfwd(model.f_red, argnums=2)(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts)
-#     
-#     ydot = ydot.at[:KaiODE.n_dim - KaiODE.n_conserve].set(model.f_red(t, y[:KaiODE.n_dim - KaiODE.n_conserve], model.reaction_consts))
-#     ydot = ydot.at[KaiODE.n_dim - KaiODE.n_conserve:].set(np.ravel(Jy@y[KaiODE.n_dim - KaiODE.n_conserve:].reshape((KaiODE.n_dim - KaiODE.n_conserve, 50), order="F") + Jp, order="F"))
-#     
-#     return ydot
-# 
-# jac_sens = jax.jit(jax.jacfwd(f_sens_fwd, argnums=1))
-
-# def compute_sensitivity(y0, period, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.0):
-# 
-#     model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
-#     ys_0 = np.concatenate([y0, np.zeros(y0.shape[0] * reaction_consts.shape[0])])
-#     traj = scipy.integrate.solve_ivp(fun=f_sens_fwd, jac=jac_sens, t_span=(0, period), y0=ys_0, method="BDF", args=(model,), atol=1e-6, rtol=1e-4)
-#     
-#     return traj
-# 
-# def compute_sensitivity_boundary(ya, yb, period, reaction_consts, max_amplitude_species, a0=0.6, c0=3.5, ATPfrac=1.0, M=None, sens=None):
-# 
-#     model = KaiODE(reaction_consts, a0=a0, c0=c0, ATPfrac=ATPfrac)
-#                    
-#     if M is None:
-#         M = compute_monodromy(ya, period, reaction_consts, a0, c0, ATPfrac).y[KaiODE.n_dim - KaiODE.n_conserve:, -1].reshape((KaiODE.n_dim - KaiODE.n_conserve, KaiODE.n_dim - KaiODE.n_conserve), order="F")
-#         
-#     if sens is None:
-#         sens = compute_sensitivity(ya, period, reaction_consts, a0, c0, ATPfrac).y[KaiODE.n_dim - KaiODE.n_conserve:, -1].reshape((KaiODE.n_dim - KaiODE.n_conserve, reaction_consts.shape[0]), order="F")
-#         
-#     J = np.zeros((M.shape[0] + 1, M.shape[0] + 1))
-#     J = J.at[:M.shape[0], :M.shape[0]].set(M)
-#     J = J.at[np.diag_indices(M.shape[0])].add(-1)
-#     J = J.at[-1, :KaiODE.n_dim - KaiODE.n_conserve].set(model.jac_red(0, ya)[max_amplitude_species, :])
-#     J = J.at[:KaiODE.n_dim - KaiODE.n_conserve, -1].set(model.f_red(0, yb))
-#     r = np.vstack([sens,
-#                   jax.jacfwd(model.f_red, argnums=2)(0, ya, model.reaction_consts)[max_amplitude_species, :]])
-#     
-#     sol = np.linalg.solve(J, -r)
-#     
-#     return sol[:KaiODE.n_dim - KaiODE.n_conserve, :], sol[KaiODE.n_dim - KaiODE.n_conserve:, :]
 
 @jax.jit
 def elim1(solver, J=None):
@@ -218,36 +158,40 @@ def compute_monodromy_1(y0, period, reaction_consts, a0=0.6, c0=3.5):
     return jax.jacfwd(diffrax.diffeqsolve, argnums=5)(term, integrator, 0, solver.p[0], None, solver.y[:, 0], args=np.concatenate([reaction_consts, np.array([a0, c0])]), 
                                                       stepsize_controller=stepsize_controller, max_steps=10000).ys[0]
 
-@jax.jit
-def LL_monodromy(y0, period, reaction_consts, a0=0.6, c0=3.5, floquet_multiplier_threshold=0.8):
+@partial(jax.jit, static_argnums=(2, 3))
+def normalize_direction(v, t, n_dim, n_points):
+    norm = newton_cotes_6(solver.t, np.linalg.norm(v[:n_dim * n_points].reshape((n_dim, n_points), order="F"), axis=0)**2)
+    norm = np.sqrt(norm + np.sum(v[solver.n_coeff:]**2))
+    return v / norm
 
-    LL = 0
+def update_args(solver, direction, y_prev, p_prev, y_guess, p_guess):
+    args = list(solver.args)
+    args[0] = direction
+    args[1] = y_prev.ravel(order="F")
+    args[2] = p_prev
+    args[3] = y_guess.ravel(order="F")
+    args[4] = p_guess
+    solver.args = tuple(args)
 
-    M = compute_monodromy_1(y0, period, reaction_consts, a0, c0)
-    floquet_multipliers, evecs = np.linalg.eig(M)
-    abs_multipliers = np.abs(floquet_multipliers)
-    LL += np.where(abs_multipliers > floquet_multiplier_threshold, 100 * (abs_multipliers - floquet_multipliers_threshold)**2, 0).sum()
-
-def compute_LL(solver1, solver2, bounds, floquet_multiplier_threshold=0.8):
-
-    LL = 0
-    LL -= 300 * (solver1.p[0] - 1)**2
-    LL -= 100 * (solver2.p[0] - 1)**2
-    LL -= 1 / np.linalg.norm(solver1.y[:, 1:] - solver1.y[:, :-1], axis=0).sum()**2
-    LL -= 1 / np.linalg.norm(solver2.y[:, 1:] - solver2.y[:, :-1], axis=0).sum()**2
-    LL += LL_monodromy(solver1.y[:, 0], solver1.p[0], solver1.args[5].a0, solver1.args[5].c0, floquet_multiplier_threshold)
-    LL += LL_monodromy(solver2.y[:, 0], solver2.p[0], solver2.args[5].a0, solver2.args[5].c0, floquet_multiplier_threshold)
-
-    for i in range(bounds.shape[0]):
-
-        if solver1.args[0].reaction_consts[i] < bounds[i, 0]:
-            LL -= (np.log(bounds[i, 0]) - np.log(solver1.args[0].reaction_consts[i]))**2
-        elif solver1.args[0].reaction_consts[i] > bounds[i, 1]:
-            LL -= (np.log(bounds[i, 1]) - np.log(solver1.args[0].reaction_consts[i]))**2
+def gauss_newton(solver, maxiter=10, tol=1e-6):
     
-    return LL
+    i = 0
+    r, scale = solver._resid_and_scale()
+    solver.err = np.max(np.abs(r / (1 + scale)))
+    direction_rhs = numpy.asanyarray(np.zeros(solver.n).at[-1].set(1))
 
-def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_size=1, maxiter=1000, tol=1e-9):
+    while i < maxiter and solver.err > tol:
+
+        i += 1
+        r, scale = solver._newton_step()
+        direction = solver.jac_LU.solve(direction_rhs)
+        direction = normalize_direction(direction, solver.t, solver.n_dim, solver.n_coeff // solver.n_dim)
+        update_args(solver, direction, solver.args[1], solver.args[2], solver.y, solver.p)
+
+    solver.n_iter = i
+    solver.success = solver.err <= tol
+
+def cont(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_size=1, maxiter=1000, tol=1e-9):
 
     i = 0
     y_out = [solver.y]
@@ -309,125 +253,60 @@ def continuation(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_si
     return np.array(y_out), np.array(p_out)
 
 @jax.jit
-def f_a(t, y, p, continuation_direction, y_prev, p_prev, ds, model, max_amplitude_species):
+def newton_cotes_6(t, y):
+    
+    weights = 5 * np.array([19, 75, 50, 50, 75, 19]) / 288
+
+    def loop_body(carry, _):
+
+        i = carry
+        ti = yi = jax.lax.dynamic_slice(t, (5 * i,), (6,))
+        yi = jax.lax.dynamic_slice(y, (5 * i,), (6,))
+
+        return i + 1, np.sum((ti[-1] - ti[0]) / 5 * weights * yi)
+
+    return jax.lax.scan(loop_body, init=0, xs=None, length=t.size // 5)[1].sum()
+
+@jax.jit
+def f_a(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model):
     return p[0] * model.f_red(t, y, a0=p[1])
 
 @jax.jit
-def fp_a(t, y, p, continuation_direction, y_prev, p_prev, ds, model, max_amplitude_species):
-    continuation_direction = continuation_direction / np.linalg.norm(continuation_direction)
-    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], a0=p[1])[max_amplitude_species],
-                     (y - y_prev)@continuation_direction[:y.shape[0]] + (p - p_prev)@continuation_direction[y.shape[0]:] - ds])
-
-@jax.jit
-def f_rc(t, y, p, continuation_direction, y_prev, p_prev, ds, model, reaction_consts, a0, rc_direction, max_amplitude_species):
-    reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
-    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts, a0=a0)
-
-@jax.jit
-def fp_rc(t, y, p, continuation_direction, y_prev, p_prev, ds, model, reaction_consts, a0, rc_direction, max_amplitude_species):
-    continuation_direction = continuation_direction / np.linalg.norm(continuation_direction)
-    reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
-    return np.array([model.f_red(t[0], y[:KaiODE.n_dim - KaiODE.n_conserve], reaction_consts=reaction_consts, a0=a0)[max_amplitude_species],
-                     (y - y_prev)@continuation_direction[:y.shape[0]] + (p - p_prev)@continuation_direction[y.shape[0]:] - ds])
-
-def sample(y0, period0, reaction_consts_0, bounds, ds=1e-2, dt=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
-
-    a0 = 0.6
-    a1 = 1.2
-    if seed is None:
-        seed = time.time_ns()
-        
-    key = jax.random.PRNGKey(seed)
-
-    max_amplitude_species = np.argmax(np.max(y0, axis=1) - np.min(y0, axis=1))
-
-    model = KaiODE(reaction_consts_0)
-    p0_a = np.array([period0, a0])
-
-    initial_continuation_direction = np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1)
-
-    solvera = colloc(f_a, fp_a, y0, p0_a, args=(initial_continuation_direction, y0.ravel(order="F"), p0_a, ds, model, max_amplitude_species))
-    y_acont, p_acont = continuation(solvera, a1, step_size=ds)
-
-    y_out = [[y0, y_acont[-1]]]
-    period_out = [[period0, p_acont[-1, 0]]]
-    dperiod_out = []
-    reaction_consts_out = [reaction_consts_0]
-
-    rc_direction = np.zeros_like(reaction_consts_0)
-
-    solver1 = colloc(f_rc, fp_rc, y0, np.array([period0, 0.]), args=(initial_continuation_direction, y0.ravel(order="F"), p0_rc, ds, model, reaction_consts_0, a0, rc_direction, max_amplitude_species))
-    solver2 = colloc(f_rc, fp_rc, y_acont[-1], np.array([p_acont[-1, 0], 0.]), args=(intial_continuation_direction, y0.ravel(order="F"), p0_rc, ds, model, reaction_consts_0, p_acont[-1, 1], rc_direction, max_amplitude_species))
-    LL = compute_LL(solver1, solver2, bounds)
-
-    #_, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
-    #dp = dp * reaction_consts_0
-    #dperiod_out.append(dp)
+def fp_a(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model):
     
-    i = 0
+    n_dim = model.n_dim - model.n_conserve
+    n_points = y.size // (model.n_dim - model.n_conserve)
+    continuation_direction = normalize_direction(continuation_direction, t, n_dim, n_points)
 
-    accepted = 0
-    rejected = 0
-    failed = 0
+    def loop_body(carry, _):
+        i = carry
+        return i + 1, f_a(t, y_prev.reshape((n_dim, n_points), order="F")[:, i], p_prev, continuation_direction, y_prev, p_prev, y_guess, p_guess, model)
 
-    while i < maxiter:
-        
-        i += 1
+    ydot = jax.lax.scan(loop_body, init=0, xs=None, length=n_points)[1].T
 
-        print("iteration %d"%(i), flush=True)
-        print("Log likelihood %.5f"%(LL), flush=True)
-        print("accepted:%d rejected:%d failed:%d"%(accepted, rejected, failed), flush=True)
-        print("period: %.5f, %.5f"%(period_out[-1][0], period_out[-1][1]), flush=True)
-        
-        key, subkey = jax.random.split(key)
-        randn = jax.random.normal(subkey, shape=(reaction_consts_0.shape[0],))
-        step = randn * dt
-        
-        reaction_consts_propose = np.exp(np.log(reaction_consts_out[-1]) + step)
-        max_amplitude_species = np.argmax(np.max(y_out[-1][0], axis=1) - np.min(y_out[-1][0], axis=1))
-   
-        solver1.success = False
-        solver1.y = y_out[-1][0]
-        solver1.p = solver1.p.at[0].set(period_out[-1][0])
-        solver1.p = solver1.p.at[1].set(0)
-        solver1.args = (initial_continuation_direction, y_out[-1][0], period_out[-1][0], solver1.args[3], model, reaction_consts_out[-1], a0, step, max_amplitude_species)
-        continuation(solver1, p_stop=1, step_size=ds)
+    return np.array([newton_cotes_6(t, np.sum(y.reshape((n_dim, n_points), order="F") * ydot, axis=0)),
+        newton_cotes_6(t, np.sum((y - y_guess).reshape((n_dim, n_points), order="F") * continuation_direction[:y.size].reshape((n_dim, n_points), order="F"), axis=0))\
+        + (p - p_guess)@continuation_direction[y.size:]])
 
-        solver2.success = False
-        solver2.y = y_out[-1][1]
-        solver2.p = solver2.p.at[0].set(period_out[-1][1])
-        solver2.args = (initial_continuation_direction, y_out[-1][1], period_out[-1][1], solver2.args[3], model, reaction_consts_out[-1], p_acont[-1, 1], step, max_amplitude_species)
-        continuation(solver2, p_stop=1, step_size=ds)
-        
-        if not (solver1.success and solver2.success):
-            y_out.append(y_out[-1])
-            period_out.append(period_out[-1])
-            reaction_consts_out.append(reaction_consts_out[-1])
-            failed += 1
-            continue
-            
-        LL_propose = compute_LL(solver1, solver2)
-        proposal_factor_r = 0
-        proposal_factor_f = 0
+@jax.jit
+def f_rc(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, rc_direction):
+    reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
+    return p[0] * model.f_red(t, y, reaction_consts=reaction_consts)
 
-        acceptance_ratio = LL_propose - LL + proposal_factor_r - proposal_factor_f
-        
-        key, subkey = jax.random.split(key)
-        accept = np.log(jax.random.uniform(subkey)) < acceptance_ratio
-        
-        if accept:
-            
-            y_out.append([solver1.y, solver2.y])
-            period_out.append([solver1.p[0], solver2.p[0]])
-            reaction_consts_out.append(reaction_consts_propose)
-            LL = LL_propose
-            accepted += 1
+@jax.jit
+def fp_rc(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, rc_direction):
+    
+    reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
+    n_dim = model.n_dim - model.n_conserve
+    n_points = y.size // (model.n_dim - model.n_conserve)
+    continuation_direction = normalize_direction(continuation_direction, t, n_dim, n_points)
 
-        else:
+    def loop_body(carry, _):
+        i = carry
+        return i + 1, f_rc(t, y_prev.reshape((n_dim, n_points), order="F")[:, i], p_prev, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, rc_direction)
 
-            y_out.append(y_out[-1])
-            period_out.append(period_out[-1])
-            reaction_consts_out.append(reaction_consts_out[-1])
-            rejected += 1
+    ydot = jax.lax.scan(loop_body, init=0, xs=None, length=n_points)[1].T    
 
-    return np.array(y_out), np.array(period_out), np.array(dperiod_out), np.array(reaction_consts_out)
+    return np.array([newton_cotes_6(t, np.sum(y.reshape((n_dim, n_points), order="F") * ydot, axis=0)),
+                     newton_cotes_6(t, np.sum((y - y_guess).reshape((n_dim, n_points), order="F") * continuation_direction[:y.size].reshape((n_dim, n_points), order="F"), axis=0))\
+                    + (p - p_guess)@continuation_direction[y.size:]])
