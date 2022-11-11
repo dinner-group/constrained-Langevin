@@ -191,64 +191,72 @@ def gauss_newton(solver, maxiter=10, tol=1e-6):
     solver.n_iter = i
     solver.success = solver.err <= tol
 
-def cont(solver, p_stop, step_size=1e-2, min_step_size=1e-4, max_step_size=1, maxiter=1000, tol=1e-9):
+def cont(solver, p_max, p_min=None, step_size=1e-2, min_step_size=1e-4, max_step_size=1, maxiter=1000, termination_condition=None, tol=1e-6):
 
     i = 0
     y_out = [solver.y]
     p_out = [solver.p]
     direction_rhs = numpy.zeros(solver.y.size + solver.p.size)
     direction_rhs[-1] = 1
-
+        
+    def step(solver, direction, step_size):
+        solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
+        solver.p = solver.p + direction[solver.n_coeff:] * step_size
+    
     solver._superLU()
     direction = solver.jac_LU.solve(direction_rhs)
-
-    args = list(solver.args)
-    args[0] = direction
-    args[1] = solver.y.ravel(order="F")
-    args[2] = solver.p
-    args[3] = step_size
-    solver.args = tuple(args)
+    direction = normalize_direction(direction, solver.t, solver.n_dim, solver.n_coeff // solver.n_dim)
+    step(solver, direction, step_size)
+    update_args(solver, direction, y_out[-1], p_out[-1], solver.y, solver.p)
     
-    solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
-    solver.p = solver.p + direction[solver.n_coeff:] * step_size
-
-    while p_out[-1][-1] < p_stop and i < maxiter:
-
+    while p_out[-1][-1] < p_max  and p_out[-1][-1] > p_min and i < maxiter and (termination_condition is None or not termination_condition(solver)):
+        
         i += 1
-    
+        
         try:
-            solver.solve(atol=tol)
+            gauss_newton(solver, tol=tol)
         except RuntimeError:
             solver.success = False
-
+                    
         if solver.success:
+                    
             y_out.append(solver.y)
             p_out.append(solver.p)
 
-            if solver.n_iter <= 3:
-                step_size *= 2
+            if solver.n_iter <= 4:
+                step_size = np.sign(step_size) * np.minimum(np.abs(step_size) * 1.3, max_step_size)
 
             direction = solver.jac_LU.solve(direction_rhs)
-            
-            args = list(solver.args)
-            args[0] = direction
-            args[1] = solver.y.ravel(order="F")
-            args[2] = solver.p
-            args[3] = step_size
-            solver.args = tuple(args)
-            
-            solver.y = solver.y + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
-            solver.p = solver.p + direction[solver.n_coeff:] * step_size
+            direction = normalize_direction(direction, solver.t, solver.n_dim, solver.n_coeff // solver.n_dim)
+            step(solver, direction, step_size)
+            update_args(solver, direction, y_out[-1], p_out[-1], solver.y, solver.p)
 
-        elif step_size > min_step_size:
-            step_size /= 2
+        elif np.abs(step_size) > min_step_size:
+            step_size /= 2            
             solver.y = y_out[-1] + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
             solver.p = p_out[-1] + direction[solver.n_coeff:] * step_size
+            update_args(solver, direction, solver.args[1], solver.args[2], solver.y, solver.p)
+            
         else:
-            raise RuntimeError("Continuation step size decreased below threshold of %s"%(min_step_size))
+            warnings.warn("Continuation step size decreased below threshold of %s"%(min_step_size))
+            break
 
-    if i >= maxiter and p_out[-1][-1] < p_stop:
-        raise RuntimeError("Continuation iterations exceeded %d"%(maxiter))
+    if p_out[-1][-1] > p_max:
+        
+        dp = p_max - p_out[-1][-1]
+        direction = solver.args[0] / solver.args[0][-1]
+        solver.y = y_out[-1] + direction[:-solver.n_par].reshape(solver.y.shape, order="F") * dp
+        solver.p = p_out[-1] + direction[-solver.n_par:] * dp
+        update_args(solver, np.zeros(solver.n).at[-1].set(1), y_out[-1], p_out[-1], solver.y, solver.p)
+
+        solver.solve(tol=tol)
+        
+        if solver.success:
+            y_out.append(solver.y)
+            p_out.append(solver.p)
+            
+    # if i >= maxiter and p_out[-1][-1] < p_stop:
+    #     raise RuntimeError("Continuation iterations exceeded %d"%(maxiter))
 
     return np.array(y_out), np.array(p_out)
 
