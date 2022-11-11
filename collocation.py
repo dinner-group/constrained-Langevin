@@ -227,18 +227,14 @@ class colloc:
             u = np.linalg.norm(dx_prev) * damping_factor / np.linalg.norm(dx - b)
             damping_factor = np.maximum(min_damping_factor, np.minimum(u, 1))
             x = np.concatenate([self.y.ravel(order="F"), self.p])
-            print(self.n_iter, damping_factor, self.err)
 
             x_new = x + damping_factor * dx
             r, scale = self._resid_and_scale(x_new[:-self.n_par], x_new[-self.n_par:])
             cost_new = np.linalg.norm(self.jac_LU.solve(numpy.asanyarray(r)))**2
 
-            print(cost_new, (1 - 2 * damping_factor * downhill_factor) * cost)
-
             while damping_factor >= min_damping_factor and cost_new > (1 - 2 * damping_factor * downhill_factor) * cost:
 
                 damping_factor = np.maximum(predictor_trust * damping_factor, damping_factor**2 * cost / ((2 * damping_factor - 1) * cost + cost_new))
-                print(damping_factor, (damping_factor**2 * cost) / ((2 * damping_factor - 1) * cost + cost_new), cost, cost_new)
                 x_new = x + damping_factor * dx
                 r, scale = self._resid_and_scale(x_new[:-self.n_par], x_new[-self.n_par:])
                 cost_new = np.linalg.norm(self.jac_LU.solve(numpy.asanyarray(r)))**2
