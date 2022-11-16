@@ -15,23 +15,54 @@ K = np.array(numpy.loadtxt(path + "/K.txt", dtype=numpy.int64))
 S = np.array(numpy.loadtxt(path + "/S.txt", dtype=numpy.int64))
 
 @jax.jit
-def E_monodromy(y0, period, reaction_consts, a0=0.6, c0=3.5, floquet_multiplier_threshold=0.8):
+def E_monodromy(y0, period, log_rc, a0=0.6, c0=3.5, floquet_multiplier_threshold=0.8):
 
     E = 0
 
-    M = continuation.compute_monodromy_1(y0, period, reaction_consts, a0, c0)
+    M = continuation.compute_monodromy_1(y0, period, np.exp(reaction_consts), a0, c0)
     floquet_multipliers, evecs = np.linalg.eig(M)
     abs_multipliers = np.abs(floquet_multipliers)
     E += np.where(abs_multipliers > floquet_multiplier_threshold, 100 * (abs_multipliers - floquet_multipliers_threshold)**2, 0).sum()
 
+def termination_condition(colloc_solver):
+    return colloc_solver.p[-1] < 0
+
+@jax.jit
+def E_arclength(y):
+    return 1 / np.linalg.norm(y[1:] - y[:-1], axis=0).sum()**2
+
 def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_multiplier_threshold=0.8):
 
     E = 0
-    F = np.zeros(position)
+    F = np.zeros(position.shape)
+
+    rc_direction = position - np.log(colloc_solver.args[5].reaction_consts)
+    natural_direction = np.zeros(colloc_solver.n).at[-1].set(1)
+    tangent_direction = colloc_solver.jac_LU.solve(numpy.asanyarray(natural_direction))
+    tangent_direction = tangent_direction / tangent_direction[-1]
+
+    colloc_solver.p = colloc_solver.p.at[-1].set(0)
+
+    y_guess = colloc_solver.y + tangent_direction[:-colloc_solver.n_par].reshape(colloc_solver.y.shape, order="F")
+    p_guess = colloc_solver.p + tangent_direction[-colloc_solver.n_par:]
+    continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, y_guess, p_guess, rc_direction)
+    colloc_solver.y = y_guess
+    colloc_solver.p = p_guess
+
+    colloc_solver.solve()
+
+    if not colloc_solver.success:
+
+        colloc_solver.y = colloc_solver.args[1]
+        colloc_solver.p = colloc_solver.args[2]
+        y_cont, p_cont = continuation.cont(colloc_solver, 1, 0, step_size=1, check_solution=termination_condition, min_step_size=1e-5, tol=1e-5)
+
+    if colloc_solver.p[-1] != 1:
+        return np.inf, np.zeros(position.shape)
 
     J = colloc_solver.jac()
-    J_LU = scipy.sparse.linalg.splu(J) 
     J = J[:-colloc_solver.n_par + 1, :-colloc_solver.n_par + 1]
+    J_LU = scipy.sparse.linalg.splu(J) 
     J_rc = np.zeros((colloc_solver.n, position))
 
     for i in range(position):
@@ -46,37 +77,32 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
     E += 300 * (colloc_solver.p[0] - 1)**2
     F -= 600 * J_rc[-colloc_solver.n_par, :]
 
-    arc_length = np.linalg.norm(colloc_solver.y[:, 1:] - colloc_solver.y[:, :-1], axis=0).sum()
-    d_arclength_dy = np.zeros(colloc_solver.y.shape)
-    d_arclength_dy = d_arclength_dy.at[:, 1:].add(colloc_solver.y[:, 1:] / np.linalg.norm(colloc_solver.y[:, 1:], axis=0))
-    d_arclength_dy = d_arclength_dy.at[:, :-1].add(colloc_solver.y[:, :-1] / np.linalg.norm(colloc_solver.y[:, :-1], axis=0))
-    E += 1 / arc_length**2
-    F -= (-2 / arc_length**4) * d_arclength_dy.ravel(order="F")@J_rc[:-colloc_solver.n_par, :]
+    E += E_arclength(solver.y)
+    F -= jax.jit(jax.jacrev(E_arclength))(solver.y)@J_rc[:-colloc_solver.n_par, :]
 
     E += E_monodromy(colloc_solver.y[:, 0], colloc_solver.p[0], colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
-    F -= jax.jit(jax.jacfwd(E_monodromy), argnums=2)(colloc_solver.y[:, 0], colloc_solver.p[0], np.exp(position)) / np.exp(position)
+    F -= jax.jit(jax.jacfwd(E_monodromy), argnums=2)(colloc_solver.y[:, 0], colloc_solver.p[0], position)
 
     for i in range(bounds.shape[0]):
 
         if position[i] < bounds[i, 0]:
             E += (bounds[i, 0] - position[i])**2
-            F -= F.at[i].add(2 * position[i])
+            F -= F.at[i].add(2 * (position[i] - bounds[i, 0]))
         elif position[i] > bounds[i, 1]:
             E += (bounds[i, 1] - position[i])**2
-            F -= F.at[i].add(2 * position[i])
-    
+            F -= F.at[i].add(2 * (position[i] - bounds[i, 1]))
+
+    solver.args[5].reaction_consts = np.exp(position)
+
     return E, F
 
-def termination_condition(colloc_solver):
-    return colloc_solver.p[-1] < 0
-
-def obabo(position, momentum, force_prev, dt, friction, prng_key, energy_function, energy_function_args):
+def obabo(position, momentum, F_prev, dt, friction, prng_key, energy_function, energy_function_args):
 
     prng_key, subkey = jax.random.split(key)
 
     W = jax.random.normal(subkey, shape=momentum.shape)
     c1 = np.exp(-dt * friction / 2)
-    momentum = c1 * momentum + c1 * W0 + (dt / 2) * force_prev
+    momentum = c1 * momentum + c1 * W0 + (dt / 2) * F_prev
     position = position + dt * momentum
     
     E, F = energy_function(position, momentum, *energy_function_args)
@@ -86,12 +112,44 @@ def obabo(position, momentum, force_prev, dt, friction, prng_key, energy_functio
     W = jax.random.normal(subkey, shape=momentum.shape)
     momentum = np.exp(-dt * friction / 2) * (momentum + (dt / 2) * force) + c1 * W
 
-    return position, momentum, E, F
+    return position, momentum, E, F, prng_key
 
-def generate_langevin_trajectory(position, dt, L, prng_key, stepper, energy_function, energy_function_args):
+def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, energy_function, energy_function_args, F_prev=None, E_prev=None):
 
+    prng_key, subkey = jax.random.split(prng_key)
+
+    position_out = np.full((L, *position.shape), np.nan)
+    momentum_out = np.full((L, *position.shape), np.nan)
+    E_out = np.full(L, np.inf)
+    F_out = np.full(L, np.nan)
+
+    momentum = jax.random.normal(subkey, position.shape)
+
+    if F_prev is None or E_prev is None:
+        E, F = energy_function(position, momentum, *energy_function_args)
+    else:
+        E, F = E_prev, F_prev
+
+    H0 = E + np.linalg.norm(momentum)**2 / 2
+    
     for i in range(L):
-        pass
+
+        position, momentum, E, F, prng_key = stepper(position, momentum, F, dt, friction, prng_key, energy_function, energy_function_args)
+        position_out = position_out.at[i].set(position)
+        momentum_out = momentum_out.at[i].set(momentum)
+        E_out = E_out.at[i].set(E)
+        F_out = F_out.at[i].set(F)
+
+        if E > 2e3:
+            break
+
+    H1 = E + np.linalg.norm(momentum)**2 / 2
+
+    prng_key, subkey = jax.random.split(prng_key)
+    u = jax.random.uniform(subkey)
+    accept = np.log(u) > -(H1 - H0)
+
+    return position_out, momentum_out, E_out, F_out, accept, prng_key
 
 def sample(y0, period0, reaction_consts_0, bounds, ds=1e-2, dt=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
 

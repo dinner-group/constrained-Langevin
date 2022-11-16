@@ -6,6 +6,7 @@ from model import *
 from collocation import *
 import time
 from functools import partial
+import os
 jax.config.update("jax_enable_x64", True)
 
 path = os.path.dirname(__file__)
@@ -160,17 +161,31 @@ def compute_monodromy_1(y0, period, reaction_consts, a0=0.6, c0=3.5):
 
 @partial(jax.jit, static_argnums=(2, 3))
 def normalize_direction(v, t, n_dim, n_points):
-    norm = newton_cotes_6(solver.t, np.linalg.norm(v[:n_dim * n_points].reshape((n_dim, n_points), order="F"), axis=0)**2)
-    norm = np.sqrt(norm + np.sum(v[solver.n_coeff:]**2))
+    norm = newton_cotes_6(t, np.linalg.norm(v[:n_dim * n_points].reshape((n_dim, n_points), order="F"), axis=0)**2)
+    norm = np.sqrt(norm + np.sum(v[n_dim * n_points:]**2))
     return v / norm
 
-def update_args(solver, direction, y_prev, p_prev, y_guess, p_guess):
+def update_args(solver, direction=None, y_prev=None, p_prev=None, y_guess=None, p_guess=None, rc_direction=None):
     args = list(solver.args)
-    args[0] = direction
-    args[1] = y_prev.ravel(order="F")
-    args[2] = p_prev
-    args[3] = y_guess.ravel(order="F")
-    args[4] = p_guess
+
+    if direction is not None:
+        args[0] = direction
+
+    if y_prev is not None:
+        args[1] = y_prev.ravel(order="F")
+
+    if p_prev is not None:
+        args[2] = p_prev
+    
+    if y_guess is not None:
+        args[3] = y_guess.ravel(order="F")
+
+    if p_guess is not None:
+        args[4] = p_guess
+
+    if rc_direction is not None:
+        args[6] = rc_direction
+
     solver.args = tuple(args)
 
 def gauss_newton(solver, maxiter=10, tol=1e-6):
@@ -207,6 +222,7 @@ def cont(solver, p_max, p_min=None, step_size=1e-2, min_step_size=1e-4, max_step
     direction = solver.jac_LU.solve(direction_rhs)
     direction = normalize_direction(direction, solver.t, solver.n_dim, solver.n_coeff // solver.n_dim)
     step(solver, direction, step_size)
+    args_prev = solver.args
     update_args(solver, direction, y_out[-1], p_out[-1], solver.y, solver.p)
     
     while p_out[-1][-1] < p_max  and p_out[-1][-1] > p_min and i < maxiter and (termination_condition is None or not termination_condition(solver)):
@@ -229,12 +245,14 @@ def cont(solver, p_max, p_min=None, step_size=1e-2, min_step_size=1e-4, max_step
             direction = solver.jac_LU.solve(direction_rhs)
             direction = normalize_direction(direction, solver.t, solver.n_dim, solver.n_coeff // solver.n_dim)
             step(solver, direction, step_size)
+            args_prev = solver.args
             update_args(solver, direction, y_out[-1], p_out[-1], solver.y, solver.p)
 
         elif np.abs(step_size) > min_step_size:
             step_size /= 2            
             solver.y = y_out[-1] + direction[:solver.n_coeff].reshape((solver.n_dim, solver.n_coeff // solver.n_dim), order="F") * step_size
             solver.p = p_out[-1] + direction[solver.n_coeff:] * step_size
+            args_prev = solver.args
             update_args(solver, direction, solver.args[1], solver.args[2], solver.y, solver.p)
             
         else:
@@ -248,8 +266,9 @@ def cont(solver, p_max, p_min=None, step_size=1e-2, min_step_size=1e-4, max_step
         solver.y = y_out[-1] + direction[:-solver.n_par].reshape(solver.y.shape, order="F") * dp
         solver.p = p_out[-1] + direction[-solver.n_par:] * dp
         update_args(solver, np.zeros(solver.n).at[-1].set(1), y_out[-1], p_out[-1], solver.y, solver.p)
+        args_prev = solver.args
 
-        solver.solve(tol=tol)
+        solver.damped_newton(tol=tol)
         
         if solver.success:
             y_out.append(solver.y)
@@ -257,6 +276,10 @@ def cont(solver, p_max, p_min=None, step_size=1e-2, min_step_size=1e-4, max_step
             
     # if i >= maxiter and p_out[-1][-1] < p_stop:
     #     raise RuntimeError("Continuation iterations exceeded %d"%(maxiter))
+
+    solver.y = y_out[-1]
+    solver.p = p_out[-1]
+    solver.args = args_prev
 
     return np.array(y_out), np.array(p_out)
 
