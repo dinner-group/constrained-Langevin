@@ -116,6 +116,16 @@ class colloc:
             p = self.p
 
         return self._resid_and_scale(y, p)[0]
+
+    @jax.jit
+    def jacp(self, y=None, p=None):
+
+        if y is None:
+            y = self.y.ravel(order="F")
+        if p is None:
+            p = self.p
+
+        return jax.jacfwd(self.resid, argnums=1)(y, p)
     
     @jax.jit
     def _jac(self, y=None, p=None):
