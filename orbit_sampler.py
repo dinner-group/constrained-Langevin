@@ -20,9 +20,11 @@ def E_floquet(y0, period, log_rc, a0=0.6, c0=3.5, floquet_multiplier_threshold=0
     E = 0
 
     M = continuation.compute_monodromy_1(y0, period, np.exp(log_rc), a0, c0)
-    floquet_multipliers, evecs = np.linalg.eig(M)
+    floquet_multipliers = np.linalg.eigvals(M)
     abs_multipliers = np.abs(floquet_multipliers)
     E += np.where(abs_multipliers > floquet_multiplier_threshold, 100 * (abs_multipliers - floquet_multiplier_threshold)**2, 0).sum()
+
+    return E
 
 @jax.jit
 def grad_floquet(y0, period, log_rc, a0=0.6, c0=3.5, floquet_multiplier_threshold=0.8):
@@ -88,14 +90,14 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
         dr_drc = colloc_solver.jacp(colloc_solver.resid, argnums=1)(y_cont[-1].ravel(order="F"), p_cont[-1])[:-colloc_solver.n_par + 1, 1]
         J_rc = J_rc.at[i, :].set(J_LU.solve(numpy.asanyarray(dr_drc)))
 
-    E += 300 * (colloc_solver.p[0] - 1)**2
+    E += 300 * (p_cont[-1, 0] - 1)**2
     F -= 600 * J_rc[-colloc_solver.n_par, :]
 
-    E += E_arclength(colloc_solver.y)
-    F -= grad_arclength(colloc_solver.y).ravel(order="F")@J_rc[:-colloc_solver.n_par, :]
+    E += E_arclength(y_cont[-1])
+    F -= grad_arclength(y_cont[-1]).ravel(order="F")@J_rc[:-colloc_solver.n_par, :]
 
-    E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].c0, floquet_multiplier_threshold)
-    F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].c0, floquet_multiplier_threshold)
+    E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
+    F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
 
     for i in range(bounds.shape[0]):
 

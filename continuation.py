@@ -147,17 +147,17 @@ def compute_monodromy(solver):
     return np.linalg.solve(-A1, A0)
 
 @jax.jit
-def compute_monodromy_1(y0, period, log_rc, a0=0.6, c0=3.5):
+def compute_monodromy_1(y0, period, reaction_consts, a0=0.6, c0=3.5):
 
     def rhs(t, y, args):
-        model = KaiODE(args[:-2])
-        return model.f_red(t, y, args[:model.reaction_consts.size], *args[-2:])
+        model = KaiODE(args[:reaction_consts.size])
+        return model.f_red(t, y, args[:model.reaction_consts.size], *args[reaction_consts.size:])
         
     term = diffrax.ODETerm(rhs)
     integrator = diffrax.Kvaerno4()
     stepsize_controller = diffrax.PIDController(rtol=1e-4, atol=1e-6)
         
-    return jax.jacfwd(diffrax.diffeqsolve, argnums=5)(term, integrator, 0, period, None, y0, args=np.concatenate([np.exp(log_rc), np.array([a0, c0])]), 
+    return jax.jacfwd(diffrax.diffeqsolve, argnums=5)(term, integrator, 0, period, None, y0, args=np.concatenate([reaction_consts, np.array([a0, c0])]), 
                                                       stepsize_controller=stepsize_controller, max_steps=10000).ys[-1]
 
 @partial(jax.jit, static_argnums=(2, 3))
