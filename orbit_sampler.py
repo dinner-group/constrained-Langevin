@@ -22,7 +22,8 @@ def E_floquet(y0, period, log_rc, a0=0.6, c0=3.5, floquet_multiplier_threshold=0
     M = continuation.compute_monodromy_1(y0, period, np.exp(log_rc), a0, c0)
     floquet_multipliers = np.linalg.eigvals(M)
     abs_multipliers = np.abs(floquet_multipliers)
-    E += np.where(abs_multipliers > floquet_multiplier_threshold, 100 * (abs_multipliers - floquet_multiplier_threshold)**2, 0).sum()
+    order = np.argsort(np.abs(abs_multipliers - 1))
+    E += np.where(abs_multipliers[order][1:] > floquet_multiplier_threshold, 100 * (abs_multipliers[order][1:] - floquet_multiplier_threshold)**2, 0).sum()
 
     return E
 
@@ -34,8 +35,10 @@ def termination_condition(colloc_solver):
     return colloc_solver.args[0][-1] < 0
 
 @jax.jit
-def E_arclength(y):
-    return 1 / np.linalg.norm(y[1:] - y[:-1], axis=0).sum()**2
+def E_arclength(y, min_arclength=0.3):
+
+    arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
+    return np.where(arclength > min_arclength, 0, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4)
 
 @jax.jit 
 def grad_arclength(y):
@@ -59,7 +62,7 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
     colloc_solver.y = y_guess
     colloc_solver.p = p_guess
 
-    colloc_solver.solve()
+    colloc_solver.solve(tol=1e-5)
 
     y_cont = np.array([colloc_solver.y])
     p_cont = np.array([colloc_solver.p])
@@ -68,13 +71,14 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
 
         colloc_solver.y = colloc_solver.args[1].reshape(colloc_solver.y.shape, order="F")
         colloc_solver.p = colloc_solver.args[2]
-        y_cont, p_cont = continuation.cont(colloc_solver, 1, 0, step_size=1, termination_condition=termination_condition, min_step_size=1e-5, tol=1e-5)
+        continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, colloc_solver.y, colloc_solver.p, rc_direction)
+        y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=termination_condition, min_step_size=1e-5, tol=1e-5)
 
     if p_cont[-1, 1] > 1:
-        y_cont, p_cont = continuation.cont(colloc_solver, 1.1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=termination_condition, min_step_size=1e-5, tol=1e-5)
+        y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=termination_condition, min_step_size=1e-5, tol=1e-5)
 
     if p_cont[-1, 1] != 1:
-        return np.inf, np.zeros(position.shape)
+        return np.inf, F
 
     J = colloc_solver.jac()
     J = J[:-colloc_solver.n_par + 1, :-colloc_solver.n_par + 1]
@@ -87,17 +91,17 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
         args = list(colloc_solver.args)
         args[-1] = rc_direction
         colloc_solver.args = tuple(args)
-        dr_drc = colloc_solver.jacp(colloc_solver.resid, argnums=1)(y_cont[-1].ravel(order="F"), p_cont[-1])[:-colloc_solver.n_par + 1, 1]
-        J_rc = J_rc.at[i, :].set(J_LU.solve(numpy.asanyarray(dr_drc)))
+        dr_drc = colloc_solver.jacp(y_cont[-1].ravel(order="F"), p_cont[-1])[:-colloc_solver.n_par + 1, 1]
+        J_rc = J_rc.at[:, i].set(J_LU.solve(-numpy.asanyarray(dr_drc)))
 
     E += 300 * (p_cont[-1, 0] - 1)**2
-    F -= 600 * J_rc[-colloc_solver.n_par, :]
+    F -= 600 * (p_cont[-1, 0] - 1) * J_rc[colloc_solver.y.size, :]
 
     E += E_arclength(y_cont[-1])
-    F -= grad_arclength(y_cont[-1]).ravel(order="F")@J_rc[:-colloc_solver.n_par, :]
+    F -= grad_arclength(y_cont[-1]).ravel(order="F")@J_rc[:colloc_solver.y.size, :]
 
-    E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
-    F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
+    #E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
+    #F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
 
     for i in range(bounds.shape[0]):
 
@@ -114,30 +118,32 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
 
 def obabo(position, momentum, F_prev, dt, friction, prng_key, energy_function, energy_function_args):
 
-    prng_key, subkey = jax.random.split(key)
+    prng_key, subkey = jax.random.split(prng_key)
 
     W = jax.random.normal(subkey, shape=momentum.shape)
     c1 = np.exp(-dt * friction / 2)
-    momentum = c1 * momentum + c1 * W0 + (dt / 2) * F_prev
+    c2 = np.sqrt(1 - c1**2)
+
+    momentum = c1 * momentum + c2 * W + (dt / 2) * F_prev
     position = position + dt * momentum
-    
+
     E, F = energy_function(position, momentum, *energy_function_args)
 
     key, subkey = jax.random.split(prng_key)
 
     W = jax.random.normal(subkey, shape=momentum.shape)
-    momentum = np.exp(-dt * friction / 2) * (momentum + (dt / 2) * force) + c1 * W
+    momentum = c1 * (momentum + (dt / 2) * F) + c2 * W
 
     return position, momentum, E, F, prng_key
 
-def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, energy_function, energy_function_args, F_prev=None, E_prev=None):
+def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, energy_function, energy_function_args, E_prev=None, F_prev=None):
 
     prng_key, subkey = jax.random.split(prng_key)
 
     position_out = np.full((L, *position.shape), np.nan)
     momentum_out = np.full((L, *position.shape), np.nan)
     E_out = np.full(L, np.inf)
-    F_out = np.full(L, np.nan)
+    F_out = np.full((L, *position.shape), np.nan)
 
     momentum = jax.random.normal(subkey, position.shape)
 
@@ -163,7 +169,7 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     prng_key, subkey = jax.random.split(prng_key)
     u = jax.random.uniform(subkey)
-    accept = np.log(u) > -(H1 - H0)
+    accept = np.log(u) < -(H1 - H0)
 
     return position_out, momentum_out, E_out, F_out, accept, prng_key
 
