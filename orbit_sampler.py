@@ -173,104 +173,48 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     return position_out, momentum_out, E_out, F_out, accept, prng_key
 
-def sample(y0, period0, reaction_consts_0, bounds, ds=1e-2, dt=1e-1, maxiter=1000, floquet_multiplier_threshold=7e-1, seed=None):
+def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None):
 
-    a0 = 0.6
-    a1 = 1.2
     if seed is None:
         seed = time.time_ns()
-        
-    key = jax.random.PRNGKey(seed)
 
-    max_amplitude_species = np.argmax(np.max(y0, axis=1) - np.min(y0, axis=1))
+    prng_key = jax.random.PRNGKey(seed)
 
-    model = KaiODE(reaction_consts_0)
-    p0_a = np.array([period0, a0])
+    kaiabc = KaiODE(np.exp(position))
+    n_dim = kaiabc.n_dim - kaiabc.n_conserve
+    p0 = np.array([period0, 0])
+    solver_args = (np.zeros(y.size + p0.size).at[-1].set(1), y0, p0, y0, p0, kaiabc, np.zeros(position.size))
+    solver = colloc(continuation.f_rc, continuation.fp_rc, y0.reshape((n_dim, y0.size // n_dim), order="F"), p0, solver_args)
+    solver._superLU()
 
-    initial_continuation_direction = np.zeros(y0.size + np.size(period0) + 1).at[-1].set(1)
+    out = numpy.empty((maxiter + 1, position.size + 1 + position.size + y0.size + np.size(period0)))
+    E, F = compute_energy_and_force(position, np.zeros(position.size), (solver, bounds))
 
-    solvera = colloc(f_a, fp_a, y0, p0_a, args=(initial_continuation_direction, y0.ravel(order="F"), p0_a, ds, model, max_amplitude_species))
-    y_acont, p_acont = cont(solvera, a1, step_size=ds)
+    out[i, :position.size] = position
+    out[i, position.size] = E
+    out[i, position.size + 1:2 * position.size + 1] = F
+    out[i, 2 * position.size + 1:2 * position.size + 1 + y0.size] = y0.ravel(order="F")
+    out[i, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)] = p0
 
-    y_out = [[y0, y_acont[-1]]]
-    period_out = [[period0, p_acont[-1, 0]]]
-    dperiod_out = []
-    reaction_consts_out = [reaction_consts_0]
+    for i in range(1, maxiter + 1):
 
-    rc_direction = np.zeros_like(reaction_consts_0)
-
-    colloc_solver = colloc(f_rc, fp_rc, y0, np.array([period0, 0.]), args=(initial_continuation_direction, y0.ravel(order="F"), p0_rc, ds, model, reaction_consts_0, a0, rc_direction, max_amplitude_species))
-    solver2 = colloc(f_rc, fp_rc, y_acont[-1], np.array([p_acont[-1, 0], 0.]), args=(intial_continuation_direction, y0.ravel(order="F"), p0_rc, ds, model, reaction_consts_0, p_acont[-1, 1], rc_direction, max_amplitude_species))
-    LL = compute_LL(colloc_solver, solver2, bounds)
-
-    #_, dp = compute_sensitivity_boundary(y0[:, 0], y0[:, -1], p0, reaction_consts_0, max_amplitude_species, M=M)
-    #dp = dp * reaction_consts_0
-    #dperiod_out.append(dp)
-    
-    i = 0
-
-    accepted = 0
-    rejected = 0
-    failed = 0
-
-    while i < maxiter:
-        
-        i += 1
-
-        print("iteration %d"%(i), flush=True)
-        print("Log likelihood %.5f"%(LL), flush=True)
-        print("accepted:%d rejected:%d failed:%d"%(accepted, rejected, failed), flush=True)
-        print("period: %.5f, %.5f"%(period_out[-1][0], period_out[-1][1]), flush=True)
-        
-        key, subkey = jax.random.split(key)
-        randn = jax.random.normal(subkey, shape=(reaction_consts_0.shape[0],))
-        step = randn * dt
-        
-        reaction_consts_propose = np.exp(np.log(reaction_consts_out[-1]) + step)
-        max_amplitude_species = np.argmax(np.max(y_out[-1][0], axis=1) - np.min(y_out[-1][0], axis=1))
-   
-        colloc_solver.success = False
-        colloc_solver.y = y_out[-1][0]
-        colloc_solver.p = colloc_solver.p.at[0].set(period_out[-1][0])
-        colloc_solver.p = colloc_solver.p.at[1].set(0)
-        colloc_solver.args = (initial_continuation_direction, y_out[-1][0], period_out[-1][0], colloc_solver.args[3], model, reaction_consts_out[-1], a0, step, max_amplitude_species)
-        cont(colloc_solver, p_stop=1, step_size=ds)
-
-        solver2.success = False
-        solver2.y = y_out[-1][1]
-        solver2.p = solver2.p.at[0].set(period_out[-1][1])
-        solver2.args = (initial_continuation_direction, y_out[-1][1], period_out[-1][1], solver2.args[3], model, reaction_consts_out[-1], p_acont[-1, 1], step, max_amplitude_species)
-        cont(solver2, p_stop=1, step_size=ds)
-        
-        if not (colloc_solver.success and solver2.success):
-            y_out.append(y_out[-1])
-            period_out.append(period_out[-1])
-            reaction_consts_out.append(reaction_consts_out[-1])
-            failed += 1
-            continue
-            
-        LL_propose = compute_LL(colloc_solver, solver2)
-        proposal_factor_r = 0
-        proposal_factor_f = 0
-
-        acceptance_ratio = LL_propose - LL + proposal_factor_r - proposal_factor_f
-        
-        key, subkey = jax.random.split(key)
-        accept = np.log(jax.random.uniform(subkey)) < acceptance_ratio
-        
+        prng_key, subkey = jax.random.split(prng_key)
+        args_prev = solver.args
+        pos_new, mom_new, E_traj, F_traj, accept, prng_key = generate_langevin_trajectory(position, langevin_trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
+                                                                                            energy_function_args=(solver, bounds), E_prev=E, F_prev=F)
         if accept:
-            
-            y_out.append([colloc_solver.y, solver2.y])
-            period_out.append([colloc_solver.p[0], solver2.p[0]])
-            reaction_consts_out.append(reaction_consts_propose)
-            LL = LL_propose
-            accepted += 1
+
+            position = pos_new
+            out[i, :position.size] = pos_new
+            out[i, position.size] = E_traj[-1]
+            out[i, position.size + 1:2 * position.size + 1] = F_traj[-1]
+            out[i, 2 * position.size + 1:2 * position.size + 1 + y0.size] = solver.y.ravel(order="F")
+            out[i, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)] = solver.p[0]
 
         else:
 
-            y_out.append(y_out[-1])
-            period_out.append(period_out[-1])
-            reaction_consts_out.append(reaction_consts_out[-1])
-            rejected += 1
+            solver.args = args_prev
+            solver.y = out[i - 1, 2 * position.size + 1:2 * position.size + 1 + y0.size].reshape(solver.y.shape, order="F")
+            solver.p = np.array([solver.p[0], 0])
 
-    return np.array(y_out), np.array(period_out), np.array(dperiod_out), np.array(reaction_consts_out)
+    return out[1:]
