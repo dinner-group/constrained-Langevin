@@ -10,6 +10,7 @@ class KaiODE:
     ind_ATP = np.array([7, 11, 12, 17, 20, 23, 26, 30])
     n_dim = 17
     n_conserve = 2
+    n_react = 50
     
     def __init__(self, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.):
         self.a0 = a0
