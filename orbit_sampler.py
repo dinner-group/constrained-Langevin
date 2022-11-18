@@ -201,6 +201,7 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
     out[0, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)] = p0[0]
 
     y0 = y0.reshape(solver.y.shape, order="F")
+    accepted, rejected, failed = 0, 0, 0
 
     for i in range(maxiter):
 
@@ -210,6 +211,10 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
                                                                                             colloc_solver=solver, bounds=bounds, E_prev=E, F_prev=F)
 
         accept = accept.reshape((accept.size, 1))
+
+        accepted += accept.sum()
+        failed += np.sum(np.isinf(E_traj))
+        rejected += np.logical_and(np.logical_not(accept), np.isfinite(E_traj))
 
         out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, :position.size]\
         = np.where(accept, pos_traj, out[i * langevin_trajectory_length, :position.size])
@@ -238,5 +243,7 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
             solver.args[-2].reaction_consts = np.exp(position)
             solver.y = y0
             solver.p = p0
+
+        print("Iteration:%d Accepted:%d Rejected:%d Failed:%d"%(i, accepted, rejected, failed), flush=True)
 
     return out[1:]
