@@ -8,6 +8,7 @@ from collocation import colloc
 import continuation
 from functools import partial
 import os
+import time
 jax.config.update("jax_enable_x64", True)
 
 path = os.path.dirname(__file__)
@@ -213,8 +214,8 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
         accept = accept.reshape((accept.size, 1))
 
         accepted += accept.sum()
-        failed += np.sum(np.isinf(E_traj))
-        rejected += np.logical_and(np.logical_not(accept), np.isfinite(E_traj))
+        failed += np.isinf(E_traj).sum()
+        rejected += np.logical_and(np.logical_not(accept), np.isfinite(E_traj)).sum()
 
         out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, :position.size]\
         = np.where(accept, pos_traj, out[i * langevin_trajectory_length, :position.size])
