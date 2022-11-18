@@ -13,11 +13,12 @@ parser.add_argument("-o", type=str, required=True)
 parser.add_argument("-n", type=int, required=True)
 parser.add_argument("-L", type=int, required=True)
 parser.add_argument("-ref", type=str, required=True)
+parser.add_argument("-seed", type=int)
 args = parser.parse_args()
 
 n_mesh_point = 60
 reference = np.load(args.ref)
-bounds = np.vstack([reference[:KaiODE.n_react] - 4.6, reference[:KaiODE.n_react] + 4.6]).T
+bounds = np.vstack([reference[-1, :KaiODE.n_react] - 4.6, reference[-1, :KaiODE.n_react] + 4.6]).T
 
 init = np.load(args.i)
 position = init[-1, :KaiODE.n_react]
@@ -28,5 +29,5 @@ y = y.reshape((KaiODE.n_dim - KaiODE.n_conserve), y.size // (KaiODE.n_dim - KaiO
 
 period = init[-1, 2 * KaiODE.n_react + 1 + y_size + 1]
 
-result = sample(position, y, period, bounds, args.L)
+result = sample(position, y, period, bounds, args.L, seed=args.seed)
 np.save(args.o, result)
