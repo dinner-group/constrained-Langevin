@@ -1,4 +1,4 @@
-from orbit_sampler import *
+from orbit_sampler import sample
 import argparse
 import numpy
 
@@ -12,12 +12,12 @@ args = parser.parse_args()
 
 n_mesh_point = 60
 reference = np.load(args.ref)
-bounds = np.vstack([reference[:model.KaiODE.n_react] - 4.6, reference[:model.KaiODE.n_react] + 4.6]).T
+bounds = np.vstack([reference[:KaiODE.n_react] - 4.6, reference[:KaiODE.n_react] + 4.6]).T
 
 init = np.load(args.i)
-position = init[-1, :model.KaiODE.n_react]
-y = init[-1, model.KaiODE.n_react:model.KaiODE.n_react + (n_mesh_point * collocation.colloc.n_colloc_point) * (model.KaiODE.n_dim - model.KaiODE.n_conserve)]
-period = init[-1, model.KaiODE.n_react + (n_mesh_point * collocation.colloc.n_colloc_point) * (model.KaiODE.n_dim - model.KaiODE.n_conserve) + 1]
+position = init[-1, :KaiODE.n_react]
+y = init[-1, KaiODE.n_react:KaiODE.n_react + (n_mesh_point * colloc.n_colloc_point) * (KaiODE.n_dim - KaiODE.n_conserve)]
+period = init[-1, KaiODE.n_react + (n_mesh_point * colloc.n_colloc_point) * (KaiODE.n_dim - KaiODE.n_conserve) + 1]
 
-result = sample_orbits(position, y, period, bounds, args.L)
+result = sample(position, y, period, bounds, args.L)
 np.save(args.o, result)
