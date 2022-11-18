@@ -29,5 +29,5 @@ y = y.reshape((KaiODE.n_dim - KaiODE.n_conserve), y.size // (KaiODE.n_dim - KaiO
 
 period = init[-1, 2 * KaiODE.n_react + 1 + y_size + 1]
 
-result = sample(position, y, period, bounds, args.L, seed=args.seed)
+result = sample(position, y, period, bounds, langevin_trajectory_length=args.L, maxiter=args.n, seed=args.seed)
 np.save(args.o, result)

@@ -215,7 +215,7 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
 
         accepted += accept.sum()
         failed += np.isinf(E_traj).sum()
-        rejected += np.logical_and(np.logical_not(accept), np.isfinite(E_traj)).sum()
+        rejected += np.logical_and(np.logical_not(accept.ravel()), np.isfinite(E_traj)).sum()
 
         out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, :position.size]\
         = np.where(accept, pos_traj, out[i * langevin_trajectory_length, :position.size])
