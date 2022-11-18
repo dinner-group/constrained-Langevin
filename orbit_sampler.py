@@ -136,14 +136,16 @@ def obabo(position, momentum, F_prev, dt, friction, prng_key, energy_function, e
 
     return position, momentum, E, F, prng_key
 
-def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, energy_function, energy_function_args, E_prev=None, F_prev=None):
+def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None):
 
     prng_key, subkey = jax.random.split(prng_key)
 
-    position_out = np.full((L, *position.shape), np.nan)
-    momentum_out = np.full((L, *position.shape), np.nan)
-    E_out = np.full(L, np.inf)
-    F_out = np.full((L, *position.shape), np.nan)
+    position_out = numpy.full((L, *position.shape), np.nan)
+    momentum_out = numpy.full((L, *position.shape), np.nan)
+    E_out = numpy.full(L, np.inf)
+    F_out = numpy.full((L, *position.shape), np.nan)
+    y_out = numpy.full((L, colloc_solver.y.size), np.nan)
+    p_out = numpy.full((L, colloc_solver.p.size), np.nan)
 
     momentum = jax.random.normal(subkey, position.shape)
 
@@ -156,22 +158,24 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
     
     for i in range(L):
 
-        position, momentum, E, F, prng_key = stepper(position, momentum, F, dt, friction, prng_key, energy_function, energy_function_args)
-        position_out = position_out.at[i].set(position)
-        momentum_out = momentum_out.at[i].set(momentum)
-        E_out = E_out.at[i].set(E)
-        F_out = F_out.at[i].set(F)
+        position, momentum, E, F, prng_key = stepper(position, momentum, F, dt, friction, prng_key, energy_function, (colloc_solver, bounds))
+        position_out[i] = position
+        momentum_out[i] = momentum
+        E_out[i] = E
+        F_out[i] = F
+        y_out[i] = colloc_solver.y.ravel(order="F")
+        p_out[i] = colloc_solver.p
 
         if E > 2e3:
             break
 
-    H1 = E + np.linalg.norm(momentum)**2 / 2
+    H1 = E_out + np.linalg.norm(momentum_out, axis=1)**2 / 2
 
     prng_key, subkey = jax.random.split(prng_key)
-    u = jax.random.uniform(subkey)
+    u = jax.random.uniform(subkey, shape=E_out.shape)
     accept = np.log(u) < -(H1 - H0)
 
-    return position_out, momentum_out, E_out, F_out, accept, prng_key
+    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
 def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None):
 
@@ -183,38 +187,56 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
     kaiabc = KaiODE(np.exp(position))
     n_dim = kaiabc.n_dim - kaiabc.n_conserve
     p0 = np.array([period0, 0])
-    solver_args = (np.zeros(y.size + p0.size).at[-1].set(1), y0, p0, y0, p0, kaiabc, np.zeros(position.size))
+    solver_args = (np.zeros(y0.size + p0.size).at[-1].set(1), y0.ravel(order="F"), p0, y0.ravel(order="F"), p0, kaiabc, np.zeros(position.size))
     solver = colloc(continuation.f_rc, continuation.fp_rc, y0.reshape((n_dim, y0.size // n_dim), order="F"), p0, solver_args)
     solver._superLU()
 
-    out = numpy.empty((maxiter + 1, position.size + 1 + position.size + y0.size + np.size(period0)))
-    E, F = compute_energy_and_force(position, np.zeros(position.size), (solver, bounds))
+    out = numpy.empty((langevin_trajectory_length * maxiter + 1, position.size + 1 + position.size + y0.size + np.size(period0)))
+    E, F = compute_energy_and_force(position, np.zeros(position.size), solver, bounds)
 
-    out[i, :position.size] = position
-    out[i, position.size] = E
-    out[i, position.size + 1:2 * position.size + 1] = F
-    out[i, 2 * position.size + 1:2 * position.size + 1 + y0.size] = y0.ravel(order="F")
-    out[i, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)] = p0
+    out[0, :position.size] = position
+    out[0, position.size] = E
+    out[0, position.size + 1:2 * position.size + 1] = F
+    out[0, 2 * position.size + 1:2 * position.size + 1 + y0.size] = y0.ravel(order="F")
+    out[0, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)] = p0[0]
 
-    for i in range(1, maxiter + 1):
+    y0 = y0.reshape(solver.y.shape, order="F")
+
+    for i in range(maxiter):
 
         prng_key, subkey = jax.random.split(prng_key)
         args_prev = solver.args
-        pos_new, mom_new, E_traj, F_traj, accept, prng_key = generate_langevin_trajectory(position, langevin_trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
-                                                                                            energy_function_args=(solver, bounds), E_prev=E, F_prev=F)
-        if accept:
+        pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(position, langevin_trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
+                                                                                            colloc_solver=solver, bounds=bounds, E_prev=E, F_prev=F)
 
-            position = pos_new
-            out[i, :position.size] = pos_new
-            out[i, position.size] = E_traj[-1]
-            out[i, position.size + 1:2 * position.size + 1] = F_traj[-1]
-            out[i, 2 * position.size + 1:2 * position.size + 1 + y0.size] = solver.y.ravel(order="F")
-            out[i, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)] = solver.p[0]
+        accept = accept.reshape((accept.size, 1))
+
+        out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, :position.size]\
+        = np.where(accept, pos_traj, out[i * langevin_trajectory_length, :position.size])
+
+        out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, position.size]\
+        = np.where(accept.ravel(), E_traj, out[i * langevin_trajectory_length, position.size])
+
+        out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, position.size + 1:2 * position.size + 1]\
+        = np.where(accept, F_traj, out[i * langevin_trajectory_length, position.size + 1:2 * position.size + 1])
+
+        out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 2 * position.size + 1:2 * position.size + 1 + y0.size]\
+        = np.where(accept, y_traj, out[i * langevin_trajectory_length, 2 * position.size + 1:2 * position.size + 1 + y0.size])
+
+        out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)]\
+        = np.where(accept, p_traj[:, :1], out[i * langevin_trajectory_length, 2 * position.size + 1 + y0.size: 2 * position.size + 1 + y0.size + np.size(period0)])
+
+        if accept[-1]:
+            position = pos_traj[-1]
+            y0 = solver.y
+            p0 = solver.p.at[-1].set(0)
+            E = E_traj[-1]
+            F = F_traj[-1]
 
         else:
-
             solver.args = args_prev
-            solver.y = out[i - 1, 2 * position.size + 1:2 * position.size + 1 + y0.size].reshape(solver.y.shape, order="F")
-            solver.p = np.array([solver.p[0], 0])
+            solver.args[-2].reaction_consts = np.exp(position)
+            solver.y = y0
+            solver.p = p0
 
     return out[1:]
