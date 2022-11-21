@@ -178,7 +178,7 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
-def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1):
+def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
 
     if seed is None:
         seed = time.time_ns()
@@ -210,6 +210,9 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
         args_prev = solver.args
         pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(position, langevin_trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
                                                                                             colloc_solver=solver, bounds=bounds, E_prev=E, F_prev=F)
+
+        if not metropolize:
+            accept = np.isfinite(E_traj)
 
         accept = accept.reshape((accept.size, 1))
 

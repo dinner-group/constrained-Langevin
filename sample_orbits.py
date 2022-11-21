@@ -14,6 +14,8 @@ parser.add_argument("-n", type=int, required=True)
 parser.add_argument("-L", type=int, required=True)
 parser.add_argument("-ref", type=str, required=True)
 parser.add_argument("-seed", type=int)
+parser.add_argument("-thin", type=int, default=1)
+parser.add_argument("-met", type=bool, default=True)
 args = parser.parse_args()
 
 n_mesh_point = 60
@@ -29,5 +31,5 @@ y = y.reshape((KaiODE.n_dim - KaiODE.n_conserve), y.size // (KaiODE.n_dim - KaiO
 
 period = init[-1, 2 * KaiODE.n_react + 1 + y_size + 1]
 
-result = sample(position, y, period, bounds, langevin_trajectory_length=args.L, dt=5e-4, maxiter=args.n, seed=args.seed)
+result = sample(position, y, period, bounds, langevin_trajectory_length=args.L, dt=5e-4, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met)
 np.save(args.o, result)
