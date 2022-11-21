@@ -73,10 +73,10 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
         colloc_solver.y = colloc_solver.args[1].reshape(colloc_solver.y.shape, order="F")
         colloc_solver.p = colloc_solver.args[2]
         continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, colloc_solver.y, colloc_solver.p, rc_direction)
-        y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=termination_condition, min_step_size=1e-5, tol=1e-5)
+        y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=None, min_step_size=1e-5, tol=1e-5)
 
     if p_cont[-1, 1] > 1:
-        y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=termination_condition, min_step_size=1e-5, tol=1e-5)
+        y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5)
 
     if p_cont[-1, 1] != 1:
         return np.inf, F
@@ -178,7 +178,7 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
-def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None):
+def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1):
 
     if seed is None:
         seed = time.time_ns()
@@ -247,4 +247,4 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
 
         print("Iteration:%d Accepted:%d Rejected:%d Failed:%d"%(i, accepted, rejected, failed), flush=True)
 
-    return out[1:]
+    return out[1::thin]
