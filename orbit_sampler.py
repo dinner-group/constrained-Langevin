@@ -108,10 +108,10 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
 
         if position[i] < bounds[i, 0]:
             E += (bounds[i, 0] - position[i])**2
-            F -= F.at[i].add(2 * (position[i] - bounds[i, 0]))
+            F = F.at[i].add(2 * (bounds[i, 0] - position[i]))
         elif position[i] > bounds[i, 1]:
             E += (bounds[i, 1] - position[i])**2
-            F -= F.at[i].add(2 * (position[i] - bounds[i, 1]))
+            F = F.at[i].add(2 * (bounds[i, 1] - position[i]))
 
     colloc_solver.args[5].reaction_consts = np.exp(position)
 
