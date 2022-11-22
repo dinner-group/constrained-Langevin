@@ -15,7 +15,7 @@ parser.add_argument("-L", type=int, required=True)
 parser.add_argument("-ref", type=str, required=True)
 parser.add_argument("-seed", type=int)
 parser.add_argument("-thin", type=int, default=1)
-parser.add_argument("-met", type=bool, default=True)
+parser.add_argument("-met", type=int, default=1)
 parser.add_argument("-dt", type=float, default=5e-4)
 args = parser.parse_args()
 
