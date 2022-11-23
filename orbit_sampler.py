@@ -45,6 +45,19 @@ def E_arclength(y, min_arclength=0.3):
 def grad_arclength(y):
     return jax.jacrev(E_arclength)(y)
 
+@jax.jit
+def E_bounds(position, bounds):
+    
+    E = 0
+    E += np.where(position < bounds[:, 0], (position - bounds)**2, 0).sum()
+    E += np.where(position > bounds[:, 1], (position - bounds)**2, 0).sum()
+
+    return E
+
+@jax.jit
+def grad_bounds(position, bounds):
+    return jax.jacrev(E_bounds)(position, bounds)
+
 def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_multiplier_threshold=0.8):
 
     E = 0
@@ -104,14 +117,8 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
     #E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
     #F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
 
-    for i in range(bounds.shape[0]):
-
-        if position[i] < bounds[i, 0]:
-            E += (bounds[i, 0] - position[i])**2
-            F = F.at[i].add(2 * (bounds[i, 0] - position[i]))
-        elif position[i] > bounds[i, 1]:
-            E += (bounds[i, 1] - position[i])**2
-            F = F.at[i].add(2 * (bounds[i, 1] - position[i]))
+    E += E_bounds(position, bounds)
+    F -= grad_bounds(position, bounds)
 
     colloc_solver.args[5].reaction_consts = np.exp(position)
 
