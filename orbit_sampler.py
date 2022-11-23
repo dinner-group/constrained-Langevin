@@ -49,8 +49,8 @@ def grad_arclength(y):
 def E_bounds(position, bounds):
     
     E = 0
-    E += np.where(position < bounds[:, 0], (position - bounds)**2, 0).sum()
-    E += np.where(position > bounds[:, 1], (position - bounds)**2, 0).sum()
+    E += np.where(position < bounds[:, 0], (position - bounds[:, 0])**2, 0).sum()
+    E += np.where(position > bounds[:, 1], (position - bounds[:, 1])**2, 0).sum()
 
     return E
 
