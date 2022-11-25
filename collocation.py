@@ -84,7 +84,7 @@ class colloc:
         if dd is None:
             dd = colloc.divided_difference(node_t, node_y)
 
-        return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1) * dd[np.diag_indices(node_t.size)].T, axis=1))
+        return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1)) * dd[np.diag_indices(node_t.size)].T, axis=1)
 
     @jax.jit
     def newton_polynomial_grad(t, node_t, node_y, dd=None):
