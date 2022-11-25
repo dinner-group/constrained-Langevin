@@ -62,16 +62,45 @@ class colloc:
     def lagrange_poly_grad(x, points, coeff, poly_denom=None):
 
         return jax.jacfwd(colloc.lagrange_poly, argnums=0)(x, points, coeff, poly_denom)
-   
+  
+    @jax.jit
+    def divided_difference(node_t, node_y):
+
+        def loop_body(carry, _):
+
+            i, prev = carry
+            numer = np.zeros_like(prev)
+            numer = numer.at[1:].set(prev[1:] - prev[:-1])
+            denom = node_t - np.roll(node_t, i)
+            dd = (numer.T / denom).T
+
+            return (i + 1, dd), dd
+
+        return np.vstack([np.array([node_y]), jax.lax.scan(loop_body, init=(1, node_y), xs=None, length=node_t.size - 1)[1]])
+
+    @jax.jit
+    def newton_polynomial(t, node_t, node_y, dd=None):
+
+        if dd is None:
+            dd = divided_difference(node_t, node_y)
+
+        return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1) * dd[np.diag_indices(node_t.size)].T, axis=1))
+
+    @jax.jit
+    def newton_polynomial_grad(t, node_t, node_y, dd=None):
+
+        return jax.jacfwd(colloc.newton_polynomial, argnums=0)(t, node_t, node_y, dd)
+
     @jax.jit
     def _compute_resid_interval(self, y, p, colloc_points, sub_points):
 
+        y = y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F")
         poly_denom = colloc.lagrange_poly_denom(sub_points)
 
         def loop_body(i, _):
 
-            poly = colloc.lagrange_poly(colloc_points[i], sub_points, y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F"), poly_denom)
-            poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F"), poly_denom)
+            poly = colloc.lagrange_poly(colloc_points[i], sub_points, y, poly_denom)
+            poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y, poly_denom)
 
             return i + 1, (poly_grad - self.f(colloc_points[i], poly, p, *self.args), poly_grad)
 
@@ -172,7 +201,7 @@ class colloc:
                              np.mgrid[self.n_colloc_eq + self.n_dim:self.n_colloc_eq + self.n_dim + self.n_par, :self.n].reshape((2, self.n_par * self.n)).T
                              ])
 
-        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n))
+        return jax.experimental.sparse.BCOO((data, indices), shape=(self.n, self.n), indices_sorted=True)
  
     def jac(self, y=None, p=None):
         
