@@ -82,7 +82,7 @@ class colloc:
     def newton_polynomial(t, node_t, node_y, dd=None):
 
         if dd is None:
-            dd = colloc.divided_difference(node_t, node_y)
+            dd = colloc.divided_difference(node_t, node_y.T)
 
         return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1)) * dd[np.diag_indices(node_t.size)].T, axis=1)
 
