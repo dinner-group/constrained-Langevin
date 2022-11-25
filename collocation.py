@@ -123,7 +123,6 @@ class colloc:
             sub_points = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], colloc.n_colloc_point + 1)
             colloc_points = self.mesh_points[i] + self.gauss_points * (self.mesh_points[i + 1] - self.mesh_points[i])
             interval_start = i * interval_width
-            poly_denom = colloc.lagrange_poly_denom(sub_points)
             y_i = jax.lax.dynamic_slice(y, (interval_start,), (interval_width + self.n_dim,))
             r_i = self._compute_resid_interval(y_i, p, colloc_points, sub_points)
 
@@ -176,7 +175,6 @@ class colloc:
             sub_points = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], colloc.n_colloc_point + 1)
             colloc_points = self.mesh_points[i] + self.gauss_points * (self.mesh_points[i + 1] - self.mesh_points[i])
             interval_start = i * interval_width
-            poly_denom = colloc.lagrange_poly_denom(sub_points)
             y_i = jax.lax.dynamic_slice(y, (interval_start,), (interval_width + self.n_dim,))
 
             Jy_i = jax.jacfwd(self._compute_resid_interval, argnums=0)(y_i, p, colloc_points, sub_points)[0]
