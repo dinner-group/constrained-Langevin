@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as np
+import jax.experimental.sparse
 import scipy.integrate
 jax.config.update("jax_enable_x64", True)
 
@@ -11,6 +12,28 @@ class KaiODE:
     n_dim = 17
     n_conserve = 2
     n_react = 50
+    S_sp = jax.experimental.sparse.BCOO((np.array([1,  1,  1, -1, -1,  1,  1, -1, -1,  1, -1,  1,  1, -1, -1, -1,  1,  1, -1,  1, -1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1, 
+                                                    -1, -1,  1, -1,  1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1, -1,  1, -1, -1,  1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1, -1,  
+                                                    1, -1,  1,  1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1,  1, -1, -1,  1, -1,  1, -1, -1, -1,  1, -1,  1,  1, -1, 1,  1,  1, 
+                                                    -1, -1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1, 1,  1,  1,  1,  1,  1,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]), 
+                                        np.array([[ 0,  0], [ 0,  1], [ 0,  2], [ 0, 38], [ 1,  0], [ 1,  3], [ 1,  4], [ 1,  7], [ 1, 17], [ 1, 38], [ 2,  1], [ 2,  5], [ 2,  6],
+                                                    [ 2, 39], [ 3,  3], [ 3,  5], [ 3,  7], [ 3,  8], [ 3, 11], [ 3, 39], [ 4,  6], [ 4,  9], [ 4, 10], [ 4, 15], [ 4, 20], [ 4, 40], 
+                                                    [ 5,  8], [ 5,  9], [ 5, 11], [ 5, 12], [ 5, 13], [ 5, 18], [ 5, 23], [ 5, 40], [ 6,  2], [ 6, 14], [ 6, 15], [ 6, 16], [ 6, 26], 
+                                                    [ 6, 41], [ 7,  4], [ 7, 12], [ 7, 14], [ 7, 17], [ 7, 18], [ 7, 19], [ 7, 30], [ 7, 41], [ 8, 10], [ 8, 16], [ 8, 20], [ 8, 21], 
+                                                    [ 8, 22], [ 8, 27], [ 8, 42], [ 8, 44], [ 9, 13], [ 9, 21], [ 9, 23], [ 9, 24], [ 9, 25], [ 9, 31], [ 9, 42], [ 9, 45], [10, 26], 
+                                                    [10, 27], [10, 28], [10, 29], [10, 43], [10, 47], [11, 19], [11, 24], [11, 28], [11, 30], [11, 31], [11, 32], [11, 43], [11, 48], 
+                                                    [12, 22], [12, 33], [12, 35], [12, 44], [12, 46], [13, 25], [13, 33], [13, 34], [13, 37], [13, 45], [13, 46], [14, 29], [14, 35], 
+                                                    [14, 36], [14, 47], [14, 49], [15, 32], [15, 34], [15, 36], [15, 37], [15, 48], [15, 49], [16,  0], [16,  5], [16,  9], [16, 14], 
+                                                    [16, 21], [16, 22], [16, 25], [16, 28], [16, 29], [16, 32], [16, 33], [16, 36], [16, 38], [16, 39], [16, 40], [16, 41], [16, 42], 
+                                                    [16, 43], [16, 44], [16, 45], [16, 46], [16, 47], [16, 48], [16, 49]])),
+                                        shape=(n_dim, n_react))
+    K_sp = jax.experimental.sparse.BCOO((np.ones(62),
+                                        np.array([[ 0, 38], [ 1,  0], [ 1,  7], [ 1, 17], [ 2,  1], [ 2, 39], [ 3,  3], [ 3,  5], [ 3, 11], [ 4,  6], [ 4, 15], [ 4, 20], [ 4, 40], 
+                                                    [ 5,  8], [ 5,  9], [ 5, 18], [ 5, 23], [ 6,  2], [ 6, 26], [ 6, 41], [ 7,  4], [ 7, 12], [ 7, 14], [ 7, 30], [ 8, 10], [ 8, 16], 
+                                                    [ 8, 27], [ 8, 42], [ 8, 44], [ 9, 13], [ 9, 21], [ 9, 31], [ 9, 45], [10, 43], [10, 47], [11, 19], [11, 24], [11, 28], [11, 48], 
+                                                    [12, 22], [12, 35], [12, 46], [13, 25], [13, 33], [13, 37], [14, 29], [14, 49], [15, 32], [15, 34], [15, 36], [16, 38], [16, 39], 
+                                                    [16, 40], [16, 41], [16, 42], [16, 43], [16, 44], [16, 45], [16, 46], [16, 47], [16, 48], [16, 49]])),
+                                        shape=(n_dim, n_react))
     
     def __init__(self, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.):
         self.a0 = a0
@@ -230,6 +253,33 @@ class KaiODE:
     @jax.jit
     def jac(self, t, y, reaction_consts=None, ATPfrac=None):
     
+        if reaction_consts is None:
+            reaction_consts = self.reaction_consts
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+        
+        return jax.jacfwd(self.f, argnums=1)(t, y, reaction_consts, ATPfrac)
+
+    @jax.jit
+    def f_test(self, t, y, reaction_consts=None, ATPfrac=None):
+
+        if reaction_consts is None:
+            reaction_consts = self.reaction_consts
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        def loop1(carry, _):
+                
+            i, z = carry
+            z = z.at[self.K_sp.indices[i, 1]].multiply(y[self.K_sp.indices[i, 0]]**self.K_sp.data[i])
+            return (i + 1, z), _
+
+        z = reaction_consts * jax.lax.scan(loop1, init=(0, np.ones(KaiODE.n_react)), xs=None, length=self.K_sp.data.size)[0][1]
+        return jax.experimental.sparse.sparsify(lambda M, x:M@x)(self.S_sp, z)
+
+    @jax.jit
+    def jac_test(self, t, y, reaction_consts=None, ATPfrac=None):
+
         if reaction_consts is None:
             reaction_consts = self.reaction_consts
         if ATPfrac is None:
