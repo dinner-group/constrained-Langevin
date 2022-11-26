@@ -82,7 +82,7 @@ class colloc:
     @jax.jit
     def lagrange_poly_barycentric_grad(t, node_t, node_y, weights=None):
 
-        return jax.jacfwd(colloc.lagrange_poly_barycentric_grad, argnums=0)(t, node_t, node_y, weights)
+        return jax.jacfwd(colloc.lagrange_poly_barycentric, argnums=0)(t, node_t, node_y, weights)
 
     @jax.jit
     def divided_difference(node_t, node_y):
