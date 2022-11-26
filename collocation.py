@@ -82,7 +82,7 @@ class colloc:
     @jax.jit
     def lagrange_poly_barycentric_grad(t, node_t, node_y, weights=None):
 
-        return jax.jacfwd(colloc.lagrange_poly_barycentric_grad, argnums=0)(x, node_t, node_y, weights)
+        return jax.jacfwd(colloc.lagrange_poly_barycentric_grad, argnums=0)(t, node_t, node_y, weights)
 
     @jax.jit
     def divided_difference(node_t, node_y):
@@ -116,12 +116,13 @@ class colloc:
     def _compute_resid_interval(self, y, p, colloc_points, sub_points):
 
         y = y.reshape((self.n_dim, colloc.n_colloc_point + 1), order="F")
-        poly_denom = colloc.lagrange_poly_denom(sub_points)
+        #poly_denom = colloc.lagrange_poly_denom(sub_points)
+        weights = colloc.barycentric_weights(sub_points)
 
         def loop_body(i, _):
 
-            poly = colloc.lagrange_poly(colloc_points[i], sub_points, y, poly_denom)
-            poly_grad = colloc.lagrange_poly_grad(colloc_points[i], sub_points, y, poly_denom)
+            poly = colloc.lagrange_poly_barycentric(colloc_points[i], sub_points, y, weights)
+            poly_grad = colloc.lagrange_poly_barycentric_grad(colloc_points[i], sub_points, y, weights)
 
             return i + 1, (poly_grad - self.f(colloc_points[i], poly, p, *self.args), poly_grad)
 
