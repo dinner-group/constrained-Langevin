@@ -62,7 +62,28 @@ class colloc:
     def lagrange_poly_grad(x, points, coeff, poly_denom=None):
 
         return jax.jacfwd(colloc.lagrange_poly, argnums=0)(x, points, coeff, poly_denom)
-  
+
+    @jax.jit
+    def barycentric_weights(node_t):
+
+        dts = node_t - np.tile(node_t, (node_t.size, 1)).T
+        dts = dts.at[np.diag_indices(node_t.size)].set(1)
+        return 1 / np.prod(dts, axis=0)
+
+    @jax.jit
+    def lagrange_poly_barycentric(t, node_t, node_y, weights=None):
+
+        if weights is None:
+            weights = colloc.barycentric_weights(node_t)
+
+        dts = t - node_t
+        return np.prod(dts) * np.sum((weights / dts) * node_y, axis=1)
+
+    @jax.jit
+    def lagrange_poly_barycentric_grad(t, node_t, node_y, weights=None):
+
+        return jax.jacfwd(colloc.lagrange_poly_barycentric_grad, argnums=0)(x, node_t, node_y, weights)
+
     @jax.jit
     def divided_difference(node_t, node_y):
 
