@@ -15,16 +15,16 @@ K = np.array(numpy.loadtxt(path + "/K.txt", dtype=numpy.int64))
 S = np.array(numpy.loadtxt(path + "/S.txt", dtype=numpy.int64))
 
 @jax.jit
-def elim1(solver, J=None):
+def elim1(colloc_solver, J=None):
 
     if J is None:
-        J = solver._jac(solver.y.ravel(order="F"), solver.p)
+        J = colloc_solver._jac(colloc_solver.y.ravel(order="F"), colloc_solver.p)
     
-    interval_width = solver.n_colloc_point * solver.n_dim
-    block_length = interval_width + solver.n_dim + solver.n_par
+    interval_width = colloc_solver.n_colloc_point * colloc_solver.n_dim
+    block_length = interval_width + colloc_solver.n_dim + colloc_solver.n_par
     block_size = block_length * interval_width
-    bc_block_size = (2 * solver.n_dim**2  + solver.n_par * solver.n_dim)
-    par_eq = J.data[-solver.n * solver.n_par:].reshape((solver.n_par, solver.n))
+    bc_block_size = (2 * colloc_solver.n_dim**2  + colloc_solver.n_par * colloc_solver.n_dim)
+    par_eq = J.data[-colloc_solver.n * colloc_solver.n_par:].reshape((colloc_solver.n_par, colloc_solver.n))
     
     def loop_body(carry, _):
 
@@ -32,31 +32,34 @@ def elim1(solver, J=None):
         block_start = i * block_size
         block = jax.lax.dynamic_slice(data, (block_start,), (block_size,)).reshape((interval_width, block_length))
         
-        lu, _, p = jax.lax.linalg.lu(block[:, solver.n_dim:-solver.n_dim - solver.n_par])
+        lu, _, p = jax.lax.linalg.lu(block[:, colloc_solver.n_dim:-colloc_solver.n_dim - colloc_solver.n_par])
         L = np.identity(lu.shape[0]).at[:, :lu.shape[1]].add(np.tril(lu, k=-1))
-        U = np.triu(lu)[:interval_width - solver.n_dim]
-        block = block.at[:, :solver.n_dim].set(jax.scipy.linalg.solve_triangular(L, block[p, :solver.n_dim], lower=True))
-        block = block.at[:, solver.n_dim:interval_width].set(np.triu(lu))
+        U = np.triu(lu)[:interval_width - colloc_solver.n_dim]
+        block = block.at[:, :colloc_solver.n_dim].set(jax.scipy.linalg.solve_triangular(L, block[p, :colloc_solver.n_dim], lower=True))
+        block = block.at[:, colloc_solver.n_dim:interval_width].set(np.triu(lu))
         block = block.at[:, interval_width:].set(jax.scipy.linalg.solve_triangular(L, block[p, interval_width:], lower=True))
         
         data = jax.lax.dynamic_update_slice(data, block.ravel(), (block_start,))
         
-        block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width), (solver.n_par, interval_width + solver.n_dim))
-        elim_coeff = jax.scipy.linalg.solve_triangular(U.T, block_par_eq[:, solver.n_dim:-solver.n_dim].T, lower=True)
-        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq[:, :solver.n_dim] - elim_coeff.T@block[:interval_width - solver.n_dim, :solver.n_dim], (0, i * interval_width))
-        par_eq = jax.lax.dynamic_update_slice(par_eq, np.zeros((solver.n_par, interval_width - solver.n_dim)), (0, i * interval_width + solver.n_dim))
-        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq[:, -solver.n_dim:]\
-                                              - elim_coeff.T@block[:interval_width - solver.n_dim, -solver.n_par - solver.n_dim:- solver.n_par], (0, (i + 1) * interval_width))
-        par_eq = jax.lax.dynamic_update_slice(par_eq, par_eq[:, -solver.n_par]\
-                                              - elim_coeff.T@block[:interval_width - solver.n_dim, -solver.n_par:], (0, solver.n_coeff))
-        
-        return (i + 1, data, par_eq), elim_coeff
+        block_par_eq = jax.lax.dynamic_slice(par_eq, (0, i * interval_width), (colloc_solver.n_par, interval_width + colloc_solver.n_dim))
+        elim_coeff = jax.scipy.linalg.solve_triangular(U.T, block_par_eq[:, colloc_solver.n_dim:-colloc_solver.n_dim].T, lower=True)
+        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq[:, :colloc_solver.n_dim] - elim_coeff.T@block[:interval_width - colloc_solver.n_dim, :colloc_solver.n_dim], (0, i * interval_width))
+        par_eq = jax.lax.dynamic_update_slice(par_eq, np.zeros((colloc_solver.n_par, interval_width - colloc_solver.n_dim)), (0, i * interval_width + colloc_solver.n_dim))
+        par_eq = jax.lax.dynamic_update_slice(par_eq, block_par_eq[:, -colloc_solver.n_dim:]\
+                                              - elim_coeff.T@block[:interval_width - colloc_solver.n_dim, -colloc_solver.n_par - colloc_solver.n_dim:- colloc_solver.n_par], (0, (i + 1) * interval_width))
+        par_eq = jax.lax.dynamic_update_slice(par_eq, par_eq[:, -colloc_solver.n_par:]\
+                                              - elim_coeff.T@block[:interval_width - colloc_solver.n_dim, -colloc_solver.n_par:], (0, colloc_solver.n_coeff))
+                
+        return (i + 1, data, par_eq), (L, elim_coeff, i * interval_width + p)
     
-    _, data, par_eq = jax.lax.scan(f=loop_body, init=(0, J.data, par_eq), xs=None, length=solver.n_mesh_point)[0]
-    data = data.at[-solver.n_par * solver.n:].set(par_eq.ravel())
+    result = jax.lax.scan(f=loop_body, init=(0, J.data, par_eq), xs=None, length=colloc_solver.n_mesh_point)
+    _, data, par_eq = result[0]
+    L, elim_coeff, p = result[1]
+    p = np.arange(J.shape[0]).at[:p.size].set(p.ravel())
+    data = data.at[-colloc_solver.n_par * colloc_solver.n:].set(par_eq.ravel())
     
     J.data = data
-    return J
+    return J, L, elim_coeff, p
 
 @jax.jit
 def elim2(solver, J):
