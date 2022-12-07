@@ -366,7 +366,7 @@ class KaiODE:
 class Brusselator:
 
     n_dim = 2
-    n_react = 4
+    n_react = 3
     n_conserve = 0
     S = np.array([[ 1,  1, -1, -1],
                   [ 0, -1,  1,  0]])
