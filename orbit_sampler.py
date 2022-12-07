@@ -257,4 +257,4 @@ def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, f
 
         print("Iteration:%d Accepted:%d Rejected:%d Failed:%d"%(i, accepted, rejected, failed), flush=True)
 
-    return out[1::thin]
+    return out[1::thin], accepted, rejected, failed

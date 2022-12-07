@@ -13,12 +13,16 @@ parser.add_argument("-o", type=str, required=True)
 parser.add_argument("-n", type=int, required=True)
 parser.add_argument("-L", type=int, required=True)
 parser.add_argument("-ref", type=str, required=True)
+parser.add_argument("-rst", type=str)
 parser.add_argument("-seed", type=int)
 parser.add_argument("-thin", type=int, default=1)
 parser.add_argument("-met", type=int, default=1)
 parser.add_argument("-dt", type=float, default=5e-4)
 parser.add_argument("-fric", type=float, default=1e-1)
 args = parser.parse_args()
+
+if args.rst is None:
+    args.rst = args.i
 
 n_mesh_point = 60
 reference = np.load(args.ref)
@@ -33,5 +37,11 @@ y = y.reshape((KaiODE.n_dim - KaiODE.n_conserve), y.size // (KaiODE.n_dim - KaiO
 
 period = init[-1, 2 * KaiODE.n_react + 1 + y_size + 1]
 
-result = sample(position, y, period, bounds, langevin_trajectory_length=args.L, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met)
+result, accepted, rejected, failed = sample(position, y, period, bounds, langevin_trajectory_length=args.L, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met)
+
+if failed / (accepted + rejected + failed) > 0.9:
+    restart = np.load(args.i)
+    index = numpy.random.randint(restart.shape[0])
+    result[-1] = restart[index]
+
 np.save(args.o, result)
