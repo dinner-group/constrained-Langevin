@@ -386,7 +386,7 @@ class Brusselator:
 
     @jax.jit
     def jac(self, t, y, reaction_consts=None):
-        return jax.jacfwd(self.f)(t, y, reaction_consts)
+        return jax.jacfwd(self.f, argnums=1)(t, y, reaction_consts)
 
     @jax.jit
     def f_red(self, t, y, reaction_consts=None):
