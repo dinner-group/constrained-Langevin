@@ -382,6 +382,7 @@ class Brusselator:
         if reaction_consts is None:
             reaction_consts = self.reaction_consts
 
+        rc = np.concatenate([np.array([1]), reaction_consts])
         return self.S@(reaction_consts * np.prod(y**self.K.T, axis=1))
 
     @jax.jit
