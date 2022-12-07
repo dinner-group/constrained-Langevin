@@ -367,6 +367,7 @@ class Brusselator:
 
     n_dim = 2
     n_react = 4
+    n_conserve = 0
     S = np.array([[ 1,  1, -1, -1],
                   [ 0, -1,  1,  0]])
     K = np.array([[0, 2, 1, 1],
