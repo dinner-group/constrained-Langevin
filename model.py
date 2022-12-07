@@ -377,7 +377,7 @@ class Brusselator:
         self.reaction_consts = reaction_consts
 
     @jax.jit
-    def f(self, reaction_consts=None):
+    def f(self, t, y, reaction_consts=None):
 
         if reaction_consts is None:
             reaction_consts = self.reaction_consts
@@ -385,8 +385,12 @@ class Brusselator:
         return self.S@(reaction_consts * np.prod(y**self.K.T, axis=1))
 
     @jax.jit
-    def jac(self, reaction_consts=None):
+    def jac(self, t, y, reaction_consts=None):
         return jax.jacfwd(self.f)
+
+    @jax.jit
+    def f_red(self, t, y, reaction_consts=None):
+        return self.f(reaction_consts)
 
     def _tree_flatten(self):
 
