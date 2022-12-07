@@ -363,4 +363,42 @@ class KaiODE:
 
         return cls(*children[:4], **aux_data)
 
+class Brusselator:
+
+    n_dim = 2
+    n_react = 4
+    S = np.array([[ 1,  1, -1, -1],
+                  [ 0, -1,  1,  0]])
+    K = np.array([[0, 2, 1, 1],
+                  [0, 1, 0, 0]])
+
+    def __init__(self, reaction_consts):
+
+        self.reaction_consts = reaction_consts
+
+    @jax.jit
+    def f(self, reaction_consts=None):
+
+        if reaction_consts is None:
+            reaction_consts = self.reaction_consts
+
+        return self.S@(reaction_consts * np.prod(y**self.K.T, axis=1))
+
+    @jax.jit
+    def jac(self, reaction_consts=None):
+        return jax.jacfwd(self.f)
+
+    def _tree_flatten(self):
+
+        children = (self.reaction_consts,)
+        aux_data = {}
+
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+
+        return cls(*children, **aux_data)
+
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
+jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
