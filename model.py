@@ -383,7 +383,7 @@ class Brusselator:
             reaction_consts = self.reaction_consts
 
         rc = np.concatenate([np.array([1]), reaction_consts])
-        return self.S@(reaction_consts * np.prod(y**self.K.T, axis=1))
+        return self.S@(rc * np.prod(y**self.K.T, axis=1))
 
     @jax.jit
     def jac(self, t, y, reaction_consts=None):
