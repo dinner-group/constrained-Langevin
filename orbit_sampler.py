@@ -185,17 +185,17 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
-def sample(position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
+def sample(odesystem, position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
 
     if seed is None:
         seed = time.time_ns()
 
     prng_key = jax.random.PRNGKey(seed)
 
-    kaiabc = KaiODE(np.exp(position))
-    n_dim = kaiabc.n_dim - kaiabc.n_conserve
+    odes = odesystem(np.exp(position))
+    n_dim = odes.n_dim - odes.n_conserve
     p0 = np.array([period0, 0])
-    solver_args = (np.zeros(y0.size + p0.size).at[-1].set(1), y0.ravel(order="F"), p0, y0.ravel(order="F"), p0, kaiabc, np.zeros(position.size))
+    solver_args = (np.zeros(y0.size + p0.size).at[-1].set(1), y0.ravel(order="F"), p0, y0.ravel(order="F"), p0, odes, np.zeros(position.size))
     solver = colloc(continuation.f_rc, continuation.fp_rc, y0.reshape((n_dim, y0.size // n_dim), order="F"), p0, solver_args)
     solver._superLU()
 
