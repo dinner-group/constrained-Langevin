@@ -31,7 +31,7 @@ if args.rst is None:
 
 n_mesh_point = 60
 reference = np.load(args.ref)
-bounds = np.vstack([reference[-1, :models[args.model].n_react] + args.lbound, reference[-1, :models[args.model].KaiODE.n_react] + args.ubound]).T
+bounds = np.vstack([reference[-1, :models[args.model].n_react] + args.lbound, reference[-1, :models[args.model].n_react] + args.ubound]).T
 
 init = np.load(args.i)
 position = init[-1, :models[args.model].n_react]
