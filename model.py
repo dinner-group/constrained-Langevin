@@ -385,13 +385,11 @@ class Brusselator:
         rc = np.concatenate([np.array([1]), reaction_consts])
         return self.S@(rc * np.prod(y**self.K.T, axis=1))
 
+    f_red = f
+
     @jax.jit
     def jac(self, t, y, reaction_consts=None):
         return jax.jacfwd(self.f, argnums=1)(t, y, reaction_consts)
-
-    @jax.jit
-    def f_red(self, t, y, reaction_consts=None):
-        return self.f(reaction_consts)
 
     def _tree_flatten(self):
 
