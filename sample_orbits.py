@@ -22,6 +22,7 @@ parser.add_argument("-fric", type=float, default=1e-1)
 parser.add_argument("-model", type=str, default="KaiODE")
 parser.add_argument("-lbound", type=float, default=-4.6)
 parser.add_argument("-ubound", type=float, default=4.6)
+parser.add_argument("-nmesh", type=int, default=60)
 args = parser.parse_args()
 
 models = {"KaiODE":model.KaiODE, "Brusselator":model.Brusselator}
@@ -29,7 +30,7 @@ models = {"KaiODE":model.KaiODE, "Brusselator":model.Brusselator}
 if args.rst is None:
     args.rst = args.i
 
-n_mesh_point = 60
+n_mesh_point = args.nmesh
 reference = np.load(args.ref)
 bounds = np.vstack([reference[-1, :models[args.model].n_react] + args.lbound, reference[-1, :models[args.model].n_react] + args.ubound]).T
 
