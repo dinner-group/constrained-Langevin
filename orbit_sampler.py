@@ -158,7 +158,7 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
     momentum = jax.random.normal(subkey, position.shape)
 
     if F_prev is None or E_prev is None:
-        E, F = energy_function(position, momentum, *energy_function_args)
+        E, F = energy_function(position, momentum, (colloc_solver, bounds))
     else:
         E, F = E_prev, F_prev
 
