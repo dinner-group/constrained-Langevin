@@ -205,10 +205,10 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
 
         for j in range(i * (n_walkers // 2) + comm.Get_rank(), i * (n_walkers // 2) + n_walkers // 2, comm.Get_size()):
 
-            odes[i] = odesystem(np.exp(position))
+            odes[j] = odesystem(np.exp(position))
             p0 = np.array([period0[j], 0])
-            solver_args = (np.zeros(y0[0].size + p0).at[-1].set(1), y0[j].ravel(order="F"), p0, y0[j].ravel(order="F"), p0, odes, np.zeros(position.shape[1]))
-            solver[i] = colloc(continuation.f_rc, continuation.fp_rc, y0[i].reshape((n_dim, y0[i].size // n_dim), order="F"), p0, solver_args)
+            solver_args = (np.zeros(y0[j].size + p0).at[-1].set(1), y0[j].ravel(order="F"), p0, y0[j].ravel(order="F"), p0, odes, np.zeros(position.shape[1]))
+            solver[j] = colloc(continuation.f_rc, continuation.fp_rc, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
             solver._superLU()
 
             E, F = compute_energy_and_force(position[j], np.zeros(position.shape[1]), solver, bounds)
