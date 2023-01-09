@@ -264,7 +264,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                 if not accept[-1]:
                     solver[k].args = args_prev
                     solver[k].args[-2].reaction_consts = np.exp(out[i * langevin_trajectory_length, k, :position.size])
-                    solver[k].y = out[i * langevin_trajectory_length, k, :position.size].reshape((n_dim, y0[i].size // n_dim), order="F")
+                    solver[k].y = out[i * langevin_trajectory_length, k, :position.size].reshape((n_dim, y0[k].size // n_dim), order="F")
                     solver[k].p = np.array([out[i * langevin_trajectory_length, k, 2 * position.size + 1 + y0.size: 2 * position.size + 1 + y0.size + np.size(period0)], 0])
 
                 allwalkers, _ = mpi4jax.allreduce(out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 
