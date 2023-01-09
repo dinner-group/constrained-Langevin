@@ -1,7 +1,9 @@
+from mpi4py import MPI
 import numpy
 import diffrax
 import jax
 import jax.numpy as np
+import mpi4jax
 import scipy.sparse
 from model import KaiODE
 from collocation import colloc
@@ -184,6 +186,96 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
     accept = np.log(u) < -(H1 - H0)
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
+
+def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
+
+    if seed is None:
+        seed = time.time_ns()
+
+    prng_key = jax.random.PRNGKey(seed)
+    n_dim = odesystem.n_dim - odesystem.n_conserve
+    n_walkers = position.shape[0]
+
+    out = np.zeros((langevin_trajectory_length * maxiter + 1, ((n_walkers + 1) // 2) * 2, position.shape[1] + 1 + position.shape[1] + y0[0].size + 1))
+
+    solver = [None for _ in range(n_walkers)]
+    odes = [None for _ in range(n_walkers)]
+
+    for i in range(2):
+
+        for j in range(i * (n_walkers // 2) + comm.Get_rank(), i * (n_walkers // 2) + n_walkers // 2, comm.Get_size()):
+
+            odes[i] = odesystem(np.exp(position))
+            p0 = np.array([period0[j], 0])
+            solver_args = (np.zeros(y0[0].size + p0).at[-1].set(1), y0[j].ravel(order="F"), p0, y0[j].ravel(order="F"), p0, odes, np.zeros(position.shape[1]))
+            solver[i] = colloc(continuation.f_rc, continuation.fp_rc, y0[i].reshape((n_dim, y0[i].size // n_dim), order="F"), p0, solver_args)
+            solver._superLU()
+
+            E, F = compute_energy_and_force(position[j], np.zeros(position.shape[1]), solver, bounds)
+
+            out = out.at[0, j, :position.shape[1]].set(position[j])
+            out = out.at[0, j, position.shape[1]].set(E)
+            out = out.at[0, j, position.shape[1] + 1:2 * position.shape[1] + 1].set(F)
+            out = out.at[0, j, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[j].size].set(y0[j].ravel(order="F"))
+            out = out.at[0, j, 2 * position.shape[1] + y0[j].size:2 * position.shape[1] + 1 + y0[j].size + 1].set(period0[j])
+
+    accepted = np.zeros(n_walkers)
+    rejected = np.zeros(n_walkers)
+    failed = np.zeros(n_walkers)
+
+    for i in range(maxiter):
+
+        for j in range(2):
+
+            for k in range(j * (n_walkers // 2) + comm.Get_rank(), j * (n_walkers // 2) + n_walkers // 2, comm.Get_size()):
+
+                prng_key, subkey = jax.random.split(prng_key)
+                args_prev = solver[k].args
+                E_prev = out[i * langevin_trajectory_length, k, position.size]
+                F_prev = out[i * langevin_trajectory_length, k, position.size + 1:2 * position.size + 1]
+
+                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(position[k], langevin_trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
+                                                                                                    colloc_solver=solver, bounds=bounds, E_prev=E_prev, F_prev=F_prev)
+
+                if not metropolize:
+                    accept = np.isfinite(E_traj)
+
+                accept = accept.reshape((accept.size, 1))
+
+                accepted = accepted.at[k].add(accept.sum())
+                failed = failed.at[k].add(np.isinf(E_traj).sum())
+                rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept.ravel()), np.isfinite(E_traj)).sum())
+
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, :position.size].set(\
+                    np.where(accept, pos_traj, out[i * langevin_trajectory_length, k, :position.size]))
+
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, position.size].set(\
+                    np.where(accept.ravel(), E_traj, E_prev))
+
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, position.size + 1:2 * position.size + 1].set(\
+                    np.where(accept, F_traj, F_prev))
+
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.size + 1:2 * position.size + 1 + y0.size].set(\
+                    np.where(accept, y_traj, out[i * langevin_trajectory_length, k, 2 * position.size + 1:2 * position.size + 1 + y0.size]))
+
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.size + 1 + y0.size:2 * position.size + 1 + y0.size + np.size(period0)].set(\
+                    np.where(accept, p_traj[:, :1], out[i * langevin_trajectory_length, k, 2 * position.size + 1 + y0.size: 2 * position.size + 1 + y0.size + np.size(period0)]))
+
+                if not accept[-1]:
+                    solver[k].args = args_prev
+                    solver[k].args[-2].reaction_consts = np.exp(out[i * langevin_trajectory_length, k, :position.size])
+                    solver[k].y = out[i * langevin_trajectory_length, k, :position.size].reshape((n_dim, y0[i].size // n_dim), order="F")
+                    solver[k].p = np.array([out[i * langevin_trajectory_length, k, 2 * position.size + 1 + y0.size: 2 * position.size + 1 + y0.size + np.size(period0)], 0])
+
+                allwalkers, _ = mpi4jax.allreduce(out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 
+                                                      j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2], 
+                                                  MPI.sum, comm)
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1,
+                             j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2].set(allwalkers)
+
+                print("Iteration:%d Walker:%d Accepted:%d Rejected:%d Failed:%d"%(i, k, accepted[k], rejected[k], failed[k]), flush=True)
+
+    return out[1::thin], accepted, rejected, failed
 
 def sample(odesystem, position, y0, period0, bounds, langevin_trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
 
