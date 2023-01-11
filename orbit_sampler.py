@@ -261,17 +261,17 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                     np.where(accept, y_traj, out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size]))
 
                 out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)].set(\
-                    np.where(accept, p_traj[:, :1], out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)]))
+                    np.where(accept, p_traj[:, :1], out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)]))
 
                 if not accept[-1]:
                     solver[k].args = args_prev
                     solver[k].args[-2].reaction_consts = np.exp(out[i * langevin_trajectory_length, k, :position.shape[1]])
                     solver[k].y = out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].reshape((n_dim, y0[k].size // n_dim), order="F")
-                    solver[k].p = np.array([out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], 0])
+                    solver[k].p = np.concatenate([out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], np.array([0])])
 
-                allwalkers, _ = mpi4jax.allreduce(out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 
+                allwalkers, _ = mpi4jax.allreduce(x=out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 
                                                       j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2], 
-                                                  MPI.sum, comm)
+                                                  op=MPI.SUM, comm=comm)
                 out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1,
                              j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2].set(allwalkers)
 

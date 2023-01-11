@@ -44,7 +44,7 @@ position = init[-1, :, :models[args.model].n_react]
 y_size = (n_mesh_point * colloc.n_colloc_point + 1) * (models[args.model].n_dim - models[args.model].n_conserve)
 y = init[-1, :, 2 * models[args.model].n_react + 1:2 * models[args.model].n_react + 1 + y_size]
 
-period = init[-1, 2 * models[args.model].n_react + 1 + y_size + 1]
+period = init[-1, :, 2 * models[args.model].n_react + 1 + y_size + 1]
 
 result, accepted, rejected, failed = orbit_sampler.sample_mpi(models[args.model], position, y, period, bounds, langevin_trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met)
 
