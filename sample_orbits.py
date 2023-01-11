@@ -52,5 +52,5 @@ result, accepted, rejected, failed = orbit_sampler.sample_mpi(models[args.model]
 #    restart = np.load(args.i)
 #    index = numpy.random.randint(restart.shape[0])
 #    result[-1] = restart[index]
-
-np.save(args.o, result)
+if comm.Get_rank() == 0:
+    np.save(args.o, result)

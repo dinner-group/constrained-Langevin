@@ -269,11 +269,10 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                     solver[k].y = out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].reshape((n_dim, y0[k].size // n_dim), order="F")
                     solver[k].p = np.concatenate([out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], np.array([0])])
 
-                allwalkers, _ = mpi4jax.allreduce(x=out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 
-                                                      j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2], 
-                                                  op=MPI.SUM, comm=comm)
-                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1,
-                             j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2].set(allwalkers)
+                pos_partial = np.copy(out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, j * (n_walkers // 2):j * (n_walkers // 2) + n_walkers // 2])
+                allwalkers, _ = mpi4jax.reduce(x=pos_partial, op=MPI.SUM, root=0, comm=comm)
+                #allwalkers = comm.allreduce(pos_partial, op=MPI.SUM)
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, j * (n_walkers // 2):j * (n_walkers // 2) + n_walkers // 2].set(allwalkers)
 
                 print("Iteration:%d Walker:%d Accepted:%d Rejected:%d Failed:%d"%(i, k, accepted[k], rejected[k], failed[k]), flush=True)
 
