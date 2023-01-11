@@ -233,10 +233,11 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                 args_prev = solver[k].args
                 E_prev = out[i * langevin_trajectory_length, k, position.shape[1]]
                 F_prev = out[i * langevin_trajectory_length, k, position.shape[1] + 1:2 * position.shape[1] + 1]
-                position = out[i * langevin_trajectory_length, k, :position.shape[1]]
 
-                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(position[k], langevin_trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
-                                                                                                    colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev)
+                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(
+                    out[i * langevin_trajectory_length, k, :position.shape[1]], langevin_trajectory_length,
+                    dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
+                    colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev)
 
                 if not metropolize:
                     accept = np.isfinite(E_traj)
@@ -256,17 +257,17 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                 out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, position.shape[1] + 1:2 * position.shape[1] + 1].set(\
                     np.where(accept, F_traj, F_prev))
 
-                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0.size].set(\
-                    np.where(accept, y_traj, out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0.size]))
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].set(\
+                    np.where(accept, y_traj, out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size]))
 
-                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.shape[1] + 1 + y0.size:2 * position.shape[1] + 1 + y0.size + np.size(period0)].set(\
-                    np.where(accept, p_traj[:, :1], out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0.size: 2 * position.shape[1] + 1 + y0.size + np.size(period0)]))
+                out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)].set(\
+                    np.where(accept, p_traj[:, :1], out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)]))
 
                 if not accept[-1]:
                     solver[k].args = args_prev
                     solver[k].args[-2].reaction_consts = np.exp(out[i * langevin_trajectory_length, k, :position.shape[1]])
-                    solver[k].y = out[i * langevin_trajectory_length, k, :position.shape[1]].reshape((n_dim, y0[k].size // n_dim), order="F")
-                    solver[k].p = np.array([out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0.size: 2 * position.shape[1] + 1 + y0.size + np.size(period0)], 0])
+                    solver[k].y = out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].reshape((n_dim, y0[k].size // n_dim), order="F")
+                    solver[k].p = np.array([out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], 0])
 
                 allwalkers, _ = mpi4jax.allreduce(out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, 
                                                       j * (n_walkers // 2) + comm.Get_rank():j * (n_walkers // 2) + n_walkers // 2], 
