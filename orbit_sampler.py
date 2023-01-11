@@ -270,7 +270,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                     solver[k].p = np.concatenate([out[i * langevin_trajectory_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], np.array([0])])
 
                 pos_partial = np.copy(out[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, j * (n_walkers // 2):j * (n_walkers // 2) + n_walkers // 2])
-                allwalkers, _ = mpi4jax.reduce(x=pos_partial, op=MPI.SUM, root=0, comm=comm)
+                allwalkers, _ = mpi4jax.allreduce(x=pos_partial, op=MPI.SUM, comm=comm)
                 #allwalkers = comm.allreduce(pos_partial, op=MPI.SUM)
                 out = out.at[i * langevin_trajectory_length + 1:(i + 1) * langevin_trajectory_length + 1, j * (n_walkers // 2):j * (n_walkers // 2) + n_walkers // 2].set(allwalkers)
 
