@@ -11,29 +11,32 @@ class colloc:
     gauss_points = (1 + np.array([-0.906179845938664, -0.538469310105683, 0.0, +0.538469310105683, +0.906179845938664])) / 2
     n_colloc_point = 5
 
-    def __init__(self, f, f_p, y0, p0, args, ta=0, tb=1):
+    def __init__(self, f, f_p, y0, p0, args, mesh_points=None):
 
         self.args = args
-        self.ta = ta
-        self.tb = tb
         self.f = f
         self.f_p = f_p
-        self.ta = ta
-        self.tb = tb
         self.y = y0
         self.p = p0
         self.n_dim = y0.shape[0]
         self.n_mesh_point = y0.shape[1] // colloc.n_colloc_point
-        self.mesh_points = np.linspace(self.ta, self.tb, self.n_mesh_point + 1)
+        
+        if mesh_points is None:
+            mesh_points = np.linspace(0, 1, self.n_mesh_point + 1)
+
+        self.update_mesh(mesh_points)
         self.n_par = p0.shape[0]
         self.n_coeff = y0.size
         self.n = self.n_coeff + self.n_par
         self.n_colloc_eq = self.n_dim * self.n_mesh_point * colloc.n_colloc_point
         self.err = np.inf
         self.n_iter = 0
-        self.t = np.linspace(ta, tb, self.n_coeff // self.n_dim)
         self.success = False
 
+    def update_mesh(self, mesh_points):
+        self.mesh_points = mesh_points
+        self.t = np.concatenate([np.ravel(np.linspace(0, 1, colloc.n_colloc_point + 1)[:-1] * np.reshape(self.mesh_points[1:] - self.mesh_points[:-1], (self.n_mesh_point, 1))\
+                    + self.mesh_points[:-1].reshape((self.n_mesh_point, 1))), np.array([self.mesh_points[-1]])])
 
     @jax.jit
     def lagrange_poly_denom(points):
@@ -156,6 +159,25 @@ class colloc:
                                y[self.n_coeff - self.n_dim:self.n_coeff] - y[:self.n_dim], 
                                self.f_p(self.t, y, p, *self.args)]),
                 np.concatenate([result[1].ravel(order="C"), np.ones(self.n_dim + self.n_par)]))
+
+    @jax.jit
+    def y_interp(self, t):
+        
+        def loop_weights(i, _):
+            node_t = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], self.n_colloc_point + 1)
+            return i + 1, colloc.barycentric_weights(node_t)
+
+        weights = jax.lax.scan(loop_weights, init=0, xs=None, length=self.n_mesh_point)[1]
+
+        def loop_interp(_, t_eval):
+            i = np.maximum(1, np.searchsorted(self.mesh_points, t_eval))
+            node_y = jax.lax.dynamic_slice(self.y, (np.array(0, dtype=np.int32), (i - 1) * colloc.n_colloc_point), (self.n_dim, colloc.n_colloc_point + 1))
+            node_t = np.linspace(self.mesh_points[i - 1], self.mesh_points[i], self.n_colloc_point + 1)
+            j = np.searchsorted(node_t, t_eval)
+            y = np.where(t_eval == node_t[j], node_y[:, j], colloc.lagrange_poly_barycentric(t_eval, node_t, node_y, weights[i - 1]))
+            return _, y
+
+        return jax.lax.scan(loop_interp, init=0, xs=t)[1].T
 
     @jax.jit
     def resid(self, y=None, p=None):
@@ -308,9 +330,8 @@ class colloc:
 
     def _tree_flatten(self):
 
-        children = (self.y, self.p, self.args, self.ta, self.tb)
-        aux_data = {"f":self.f, "f_p":self.f_p, "n_dim":self.n_dim, "n_mesh_point":self.n_mesh_point, 
-        "n_par":self.n_par, "n_coeff":self.n_coeff, "n":self.n, "n_colloc_eq":self.n_colloc_eq}
+        children = (self.y, self.p, self.args, self.mesh_points)
+        aux_data = {"f":self.f, "f_p":self.f_p, "n_dim":self.n_dim, "n_mesh_point":self.n_mesh_point, "n_par":self.n_par, "n_coeff":self.n_coeff, "n":self.n, "n_colloc_eq":self.n_colloc_eq}
 
         return (children, aux_data)
 
