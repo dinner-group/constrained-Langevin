@@ -126,6 +126,83 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
 
     return E, F
 
+@jax.jit
+def wcov(x, dat, scale, cov_weight=1):
+    
+    weight = np.exp(-scale * np.linalg.norm(dat - x, axis=1)**2 / 2)
+    # weight = scale / (np.pi * (1 + (scale * np.linalg.norm(dat - x, axis=1))**2))
+    weight /= weight.sum()
+    wmean = np.sum(weight.reshape((weight.size, 1)) * dat, axis=0)
+    dat_centered = dat - wmean
+    
+    return np.identity(x.size) + cov_weight * (weight * dat.T)@dat_centered 
+
+@jax.jit
+def B_wcov(x, dat, scale, cov_weight=1):
+    return np.linalg.cholesky(wcov(x, dat, scale, cov_weight))
+
+@jax.jit
+def divBT(x, dat, scale, cov_weight=1):
+    
+    dB = jax.jacfwd(B_wcov)(x, dat, scale, cov_weight)
+    
+    def loop_body(carry, _):
+        i = carry
+        return i + 1, dB[:, :, i].T[:, i]
+    
+    return jax.lax.scan(loop_body, init=0, xs=None, length=x.size)[1].sum(axis=0)
+
+@partial(jax.jit, static_argnums=(6))
+def implicit_position_update(position, momentum, dt, wcov_dat, wcov_scale, wcov_weight, maxiter=10, tol=1e-9):
+        
+    position0 = position
+        
+    def resid(position):
+        B = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
+        return position0 + (dt / 2) * B@momentum - position
+    
+    def loop_body(carry):
+        
+        i, position, r = carry
+        d = np.linalg.solve(jax.jacfwd(resid)(position), -r)
+        position = position + d
+        r = resid(position)
+        
+        return i + 1, position, r
+    
+    def cond(carry):
+        
+        i, position, r = carry
+        err = np.max(np.abs(r / (1 + position)))
+        
+        return (err > tol) & (i < maxiter)
+    
+    i, position, r = jax.lax.while_loop(cond, loop_body, (0, position, resid(position)))
+    err = np.max(np.abs(r / (1 + position)))
+    
+    return np.where(err < tol, position, np.full(position.shape, np.nan))
+
+def baoab_precondition(position, momentum, F_prev, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, energy_function_args):
+    
+    prng_key, subkey = jax.random.split(prng_key)
+    
+    W = jax.random.normal(subkey, shape=momentum.shape)
+    c1 = np.exp(-dt * friction / 2)
+    c2 = np.sqrt(1 - c1**2)
+    
+    B0 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
+    momentum = momentum + (dt / 2) * B0.T@F_prev
+    position = implicit_position_update(position, momentum, dt, wcov_dat, wcov_scale, wcov_weight)
+    momentum = c1 * momentum + (c1 + 1) * (dt / 2) * divBT(position, wcov_dat, wcov_scale, wcov_weight) + c2 * W
+    
+    B1 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
+    position = position + (dt / 2) * B@momentum
+    
+    E, F = energy_function(position, momentum, *energy_function_args)
+    momentum = momentum + (dt / 2) * B1.T@F
+    
+    return position, momentum, E, F, prng_key
+
 def obabo(position, momentum, F_prev, dt, friction, prng_key, energy_function, energy_function_args):
 
     prng_key, subkey = jax.random.split(prng_key)
