@@ -33,6 +33,21 @@ class colloc:
         self.n_iter = 0
         self.success = False
 
+    @jax.jit
+    def compute_mesh(mesh_density, mesh_old):
+       
+        cum = np.cumsum(mesh_density * (mesh_old[1:] - mesh_old[:-1]) / 2)
+        cum = cum / cum[-1]
+        cum = np.pad(cum, ((1, 0)))
+
+        def loop_body(_, y):
+            i = np.searchsorted(cum, y)
+            return _, ((cum[i] - cum[i - 1]) / (mesh_old[i] - mesh_old[i - 1])) * (y - cum[i - 1]) + mesh_old[i - 1]
+
+        mesh = jax.lax.scan(loop_body, init=0, xs=np.linspace(cum[0], cum[-1], mesh_old.size)[1:-1])[1]
+        mesh = np.concatenate([np.array([0]), mesh, np.array([1])])
+        return mesh
+
     def update_mesh(self, mesh_points):
         self.mesh_points = mesh_points
         self.t = np.concatenate([np.ravel(np.linspace(0, 1, colloc.n_colloc_point + 1)[:-1] * np.reshape(self.mesh_points[1:] - self.mesh_points[:-1], (self.n_mesh_point, 1))\
@@ -90,6 +105,8 @@ class colloc:
     @jax.jit
     def divided_difference(node_t, node_y):
 
+        node_y = node_y.T
+
         def loop_body(carry, _):
 
             i, prev = carry
@@ -106,7 +123,7 @@ class colloc:
     def newton_polynomial(t, node_t, node_y, dd=None):
 
         if dd is None:
-            dd = colloc.divided_difference(node_t, node_y.T)
+            dd = colloc.divided_difference(node_t, node_y)
 
         return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1)) * dd[np.diag_indices(node_t.size)].T, axis=1)
 
@@ -164,7 +181,7 @@ class colloc:
     def y_interp(self, t):
         
         def loop_weights(i, _):
-            node_t = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], self.n_colloc_point + 1)
+            node_t = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], colloc.n_colloc_point + 1)
             return i + 1, colloc.barycentric_weights(node_t)
 
         weights = jax.lax.scan(loop_weights, init=0, xs=None, length=self.n_mesh_point)[1]
@@ -172,12 +189,22 @@ class colloc:
         def loop_interp(_, t_eval):
             i = np.maximum(1, np.searchsorted(self.mesh_points, t_eval))
             node_y = jax.lax.dynamic_slice(self.y, (np.array(0, dtype=np.int32), (i - 1) * colloc.n_colloc_point), (self.n_dim, colloc.n_colloc_point + 1))
-            node_t = np.linspace(self.mesh_points[i - 1], self.mesh_points[i], self.n_colloc_point + 1)
+            node_t = np.linspace(self.mesh_points[i - 1], self.mesh_points[i], colloc.n_colloc_point + 1)
             j = np.searchsorted(node_t, t_eval)
             y = np.where(t_eval == node_t[j], node_y[:, j], colloc.lagrange_poly_barycentric(t_eval, node_t, node_y, weights[i - 1]))
             return _, y
 
         return jax.lax.scan(loop_interp, init=0, xs=t)[1].T
+
+    @jax.jit
+    def truncation_error_estimate(self):
+        
+        def loop_body(i, _):
+            node_t = np.linspace(self.mesh_points[i], self.mesh_points[i + 1], colloc.n_colloc_point + 1)
+            node_y = jax.lax.dynamic_slice(self.y, (0, (i - 1) * colloc.n_colloc_point), (self.n_dim, colloc.n_colloc_point + 1))
+            return i + 1, np.linalg.norm(colloc.divided_difference(node_t, node_y)[0, 0])**(1 / colloc.n_colloc_point)
+
+        return jax.lax.scan(loop_body, init=0, xs=None, length=self.n_mesh_point)[1]
 
     @jax.jit
     def resid(self, y=None, p=None):
