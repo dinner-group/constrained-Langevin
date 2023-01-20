@@ -337,11 +337,12 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
 
             E, F = compute_energy_and_force(position[j], np.zeros(position.shape[1]), solver[j], bounds)
 
-            out = out.at[0, j, :position.shape[1]].set(position[j])
             out = out.at[0, j, position.shape[1]].set(E)
             out = out.at[0, j, position.shape[1] + 1:2 * position.shape[1] + 1].set(F)
             out = out.at[0, j, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[j].size].set(y0[j].ravel(order="F"))
             out = out.at[0, j, 2 * position.shape[1] + y0[j].size:2 * position.shape[1] + 1 + y0[j].size + 1].set(period0[j])
+
+    out = out.at[0, :, :position.shape[1]].set(position)
 
     accepted = np.zeros(n_walkers)
     rejected = np.zeros(n_walkers)
@@ -357,8 +358,9 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 args_prev = solver[k].args
                 E_prev = out[i * save_length, k, position.shape[1]]
                 F_prev = out[i * save_length, k, position.shape[1] + 1:2 * position.shape[1] + 1]
-                j_other = (1 + (2 * k // n_walkers)) % 2
+                j_other = np.logical_not(j).astype(np.int64)
                 wcov_dat = out[i * save_length, j_other * (n_walkers // 2):(j_other + 1) * (n_walkers // 2), :position.shape[1]]
+                print(wcov_dat)
 
                 pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory_precondition(
                     out[i * save_length, k, :position.shape[1]], save_length * thin,
