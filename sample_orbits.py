@@ -48,9 +48,13 @@ period = init[-1, :, 2 * models[args.model].n_react + 1 + y_size + 1]
 
 result, accepted, rejected, failed = orbit_sampler.sample_mpi(models[args.model], position, y, period, bounds, langevin_trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met)
 
-#if failed / (accepted + rejected + failed) > 0.9:
-#    restart = np.load(args.i)
-#    index = numpy.random.randint(restart.shape[0])
-#    result[-1] = restart[index]
 if comm.Get_rank() == 0:
+
+    for i in range(failed.size):
+
+        if failed[i] / (accepted[i] + rejected[i] + failed[i]) > 0.9:
+            restart = np.load(args.rst)
+            index = numpy.random.randint(restart.shape[0])
+            result[-1, i] = restart[index, i]
+
     np.save(args.o, result)
