@@ -264,6 +264,47 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
+def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None):
+
+    prng_key, subkey = jax.random.split(prng_key)
+
+    position_out = numpy.full((L, *position.shape), np.nan)
+    momentum_out = numpy.full((L, *position.shape), np.nan)
+    E_out = numpy.full(L, np.inf)
+    F_out = numpy.full((L, *position.shape), np.nan)
+    y_out = numpy.full((L, colloc_solver.y.size), np.nan)
+    p_out = numpy.full((L, colloc_solver.p.size), np.nan)
+
+    momentum = jax.random.normal(subkey, position.shape)
+
+    if F_prev is None or E_prev is None:
+        E, F = energy_function(position, momentum, (colloc_solver, bounds))
+    else:
+        E, F = E_prev, F_prev
+
+    H0 = E + np.linalg.norm(momentum)**2 / 2
+
+    for i in range(L):
+
+        position, momentum, E, F, prng_key = baoab_precondition(position, momentum, F, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, (colloc_solver, bounds))
+        position_out[i] = position
+        momentum_out[i] = momentum
+        E_out[i] = E
+        F_out[i] = F
+        y_out[i] = colloc_solver.y.ravel(order="F")
+        p_out[i] = colloc_solver.p
+
+        if E > 2e3:
+            break
+
+    H1 = E_out + np.linalg.norm(momentum_out, axis=1)**2 / 2
+
+    prng_key, subkey = jax.random.split(prng_key)
+    u = jax.random.uniform(subkey, shape=E_out.shape)
+    accept = np.log(u) < -(H1 - H0)
+
+    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
+
 def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
 
     if seed is None:
