@@ -196,10 +196,11 @@ def baoab_precondition(position, momentum, F_prev, dt, friction, wcov_dat, wcov_
     momentum = c1 * momentum + (c1 + 1) * (dt / 2) * divBT(position, wcov_dat, wcov_scale, wcov_weight) + c2 * W
     
     B1 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
-    position = position + (dt / 2) * B@momentum
+    position = position + (dt / 2) * B1@momentum
     
+    B2 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
     E, F = energy_function(position, momentum, *energy_function_args)
-    momentum = momentum + (dt / 2) * B1.T@F
+    momentum = momentum + (dt / 2) * B2.T@F
     
     return position, momentum, E, F, prng_key
 
@@ -357,7 +358,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, langevin_trajectory_len
                 pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory_precondition(
                     out[i * langevin_trajectory_length, k, :position.shape[1]], langevin_trajectory_length,
                     dt, friction, wcov_dat, wcov_scale=2e-1, wcov_weight=1,
-                    prng_key=prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
+                    prng_key=prng_key, energy_function=compute_energy_and_force, 
                     colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev)
 
                 if not metropolize:
