@@ -398,8 +398,8 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                     solver[k].p = np.concatenate([out[i * save_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], np.array([0])])
 
                 pos_partial = np.copy(out[i * save_length + 1:(i + 1) * save_length + 1, j * (n_walkers // 2):(j + 1) * (n_walkers // 2)])
-                allwalkers, _ = mpi4jax.allreduce(x=pos_partial, op=MPI.SUM, comm=comm)
-                #allwalkers = comm.allreduce(pos_partial, op=MPI.SUM)
+                #allwalkers, _ = mpi4jax.allreduce(x=pos_partial, op=MPI.SUM, comm=comm)
+                allwalkers = comm.allreduce(pos_partial, op=MPI.SUM)
                 out = out.at[i * save_length + 1:(i + 1) * save_length + 1, j * (n_walkers // 2):(j + 1) * (n_walkers // 2)].set(allwalkers)
 
                 print("Iteration:%d Walker:%d Accepted:%d Rejected:%d Failed:%d"%(i, k, accepted[k], rejected[k], failed[k]), flush=True)
