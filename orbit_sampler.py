@@ -129,13 +129,13 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
 @jax.jit
 def wcov(x, dat, scale, cov_weight=1):
     
-    weight = np.exp(-scale * np.linalg.norm(dat - x, axis=1)**2 / 2)
+    weight = np.exp(-scale * np.sum((dat - x)**2, axis=1) / 2)
     # weight = scale / (np.pi * (1 + (scale * np.linalg.norm(dat - x, axis=1))**2))
     weight /= weight.sum()
     wmean = np.sum(weight.reshape((weight.size, 1)) * dat, axis=0)
     dat_centered = dat - wmean
     
-    return np.identity(x.size) + cov_weight * (weight * dat.T)@dat_centered 
+    return np.identity(x.size) + cov_weight * (weight * dat_centered.T)@dat_centered 
 
 @jax.jit
 def B_wcov(x, dat, scale, cov_weight=1):
@@ -360,7 +360,6 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 F_prev = out[i * save_length, k, position.shape[1] + 1:2 * position.shape[1] + 1]
                 j_other = np.logical_not(j).astype(np.int64)
                 wcov_dat = out[i * save_length, j_other * (n_walkers // 2):(j_other + 1) * (n_walkers // 2), :position.shape[1]]
-                print(wcov_dat)
 
                 pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory_precondition(
                     out[i * save_length, k, :position.shape[1]], save_length * thin,
