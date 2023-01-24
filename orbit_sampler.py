@@ -375,21 +375,24 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 accepted = accepted.at[k].add(accept.sum())
                 failed = failed.at[k].add(np.isinf(E_traj).sum())
                 rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept.ravel()), np.isfinite(E_traj)).sum())
+                
+                out_traj = np.concatenate([pos_traj, E_traj.reshape((E_traj.size, 1)), F_traj, y_traj, p_traj[:, :1]], axis=1)
+                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k].set(np.where(accept, out_traj, out[i * save_length, k]))
 
-                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, :position.shape[1]].set(\
-                    np.where(accept, pos_traj, out[i * save_length, k, :position.shape[1]]))
-
-                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, position.shape[1]].set(\
-                    np.where(accept.ravel(), E_traj, E_prev))
-
-                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, position.shape[1] + 1:2 * position.shape[1] + 1].set(\
-                    np.where(accept, F_traj, F_prev))
-
-                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].set(\
-                    np.where(accept, y_traj, out[i * save_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size]))
-
-                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)].set(\
-                    np.where(accept, p_traj[:, :1], out[i * save_length, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)]))
+#                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, :position.shape[1]].set(\
+#                    np.where(accept, pos_traj, out[i * save_length, k, :position.shape[1]]))
+#
+#                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, position.shape[1]].set(\
+#                    np.where(accept.ravel(), E_traj, E_prev))
+#
+#                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, position.shape[1] + 1:2 * position.shape[1] + 1].set(\
+#                    np.where(accept, F_traj, F_prev))
+#
+#                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].set(\
+#                    np.where(accept, y_traj, out[i * save_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size]))
+#
+#                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)].set(\
+#                    np.where(accept, p_traj[:, :1], out[i * save_length, k, 2 * position.shape[1] + 1 + y0[k].size:2 * position.shape[1] + 1 + y0[k].size + np.size(period0)]))
 
                 if not accept[-1]:
                     solver[k].args = args_prev
