@@ -53,8 +53,9 @@ if comm.Get_rank() == 0:
     for i in range(failed.size):
 
         if failed[i] / (accepted[i] + rejected[i] + failed[i]) > 0.9:
-            restart = np.load(args.rst)
-            index = numpy.random.randint(restart.shape[0])
-            result[-1, i] = restart[index, i]
+            restart = np.load(args.i)
+            r1 = numpy.random.randint(restart.shape[0])
+            r2 = numpy.random.randint(restart.shape[1])
+            result = result.at[-1, i].set(restart[r1, r2])
 
     np.save(args.o, result)
