@@ -337,10 +337,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
 
             E, F = compute_energy_and_force(position[j], np.zeros(position.shape[1]), solver[j], bounds)
 
-            out = out.at[0, j, position.shape[1]].set(E)
-            out = out.at[0, j, position.shape[1] + 1:2 * position.shape[1] + 1].set(F)
-            out = out.at[0, j, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[j].size].set(y0[j].ravel(order="F"))
-            out = out.at[0, j, 2 * position.shape[1] + y0[j].size:2 * position.shape[1] + 1 + y0[j].size + 1].set(period0[j])
+            out = out.at[0, j, position.shape[1]:].set(np.concatenate([np.array([E]), F, y0[j].ravel(order="F"), np.array([period0[j]])]))
 
     out = out.at[0, :, :position.shape[1]].set(position)
 
