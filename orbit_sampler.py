@@ -279,7 +279,7 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
     momentum = jax.random.normal(subkey, position.shape)
 
     if F_prev is None or E_prev is None:
-        E, F = energy_function(position, momentum, (colloc_solver, bounds))
+        E, F = energy_function(position, momentum, colloc_solver, bounds)
     else:
         E, F = E_prev, F_prev
 
@@ -322,7 +322,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
     momentum = np.zeros_like(position)
 
     if F_prev is None or E_prev is None:
-        E, F = energy_function(position, momentum, (colloc_solver, bounds))
+        E, F = energy_function(position, momentum, colloc_solver, bounds)
     else:
         E, F = E_prev, F_prev
 
