@@ -335,7 +335,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
         B0 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
         momentum = (dt / 2) * B0.T@W
         position_propose = position + momentum
-        E_propose, F_propose = energy_function(position, momentum, (colloc_solver, bounds))
+        E_propose, F_propose = energy_function(position, momentum, colloc_solver, bounds)
 
         prng_key, subkey = jax.random.split(prng_key)
         u = jax.random.uniform(subkey)
