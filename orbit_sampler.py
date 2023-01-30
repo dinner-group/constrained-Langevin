@@ -310,7 +310,53 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
-def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
+def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None, thin=1):
+
+    position_out = numpy.full((L // thin, *position.shape), np.nan)
+    momentum_out = numpy.full((L // thin, *position.shape), np.nan)
+    E_out = numpy.full(L // thin, np.inf)
+    F_out = numpy.full((L // thin, *position.shape), np.nan)
+    y_out = numpy.full((L // thin, colloc_solver.y.size), np.nan)
+    p_out = numpy.full((L // thin, colloc_solver.p.size), np.nan)
+
+    if F_prev is None or E_prev is None:
+        E, F = energy_function(position, momentum, (colloc_solver, bounds))
+    else:
+        E, F = E_prev, F_prev
+
+    j = 0
+
+    for i in range(L):
+
+        prng_key, subkey = jax.random.split(prng_key)
+        W = jax.random.normal(subkey, shape=momentum.shape)
+        B0 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
+        momentum = (dt / 2) * B0.T@W
+        position_propose = position + momentum
+        E_propose, F_propose = energy_function(position, momentum, (colloc_solver, bounds))
+
+        prng_key, subkey = jax.random.split(prng_key)
+        u = jax.random.uniform(subkey)
+
+        if np.log(u) < -(E_propose - E):
+            position = position_propose
+            E = E_propose
+            F = F_propose
+
+        if i % thin == thin - 1:
+            position_out[j] = position
+            momentum_out[j] = momentum
+            E_out[j] = E
+            F_out[j] = F
+            y_out[j] = colloc_solver.y.ravel(order="F")
+            p_out[j] = colloc_solver.p
+            j += 1
+
+    accept = np.ones_like(E_out)
+
+    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
+
+def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition):
 
     if seed is None:
         seed = time.time_ns()
@@ -358,7 +404,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 j_other = np.logical_not(j).astype(np.int64)
                 wcov_dat = out[i * save_length, j_other * (n_walkers // 2):(j_other + 1) * (n_walkers // 2), :position.shape[1]]
 
-                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory_precondition(
+                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = dynamics(
                     out[i * save_length, k, :position.shape[1]], save_length * thin,
                     dt, friction, wcov_dat, wcov_scale=2e-1, wcov_weight=1,
                     prng_key=prng_key, energy_function=compute_energy_and_force, 
