@@ -319,6 +319,8 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
     y_out = numpy.full((L // thin, colloc_solver.y.size), np.nan)
     p_out = numpy.full((L // thin, colloc_solver.p.size), np.nan)
 
+    momentum = np.zeros_like(position)
+
     if F_prev is None or E_prev is None:
         E, F = energy_function(position, momentum, (colloc_solver, bounds))
     else:
