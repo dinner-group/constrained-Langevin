@@ -48,7 +48,7 @@ y = init[-1, :, 2 * models[args.model].n_react + 1:2 * models[args.model].n_reac
 
 period = init[-1, :, 2 * models[args.model].n_react + 1 + y_size + 1]
 
-result, accepted, rejected, failed = orbit_sampler.sample_mpi(models[args.model], position, y, period, bounds, trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met, dynamics=args.dyn)
+result, accepted, rejected, failed = orbit_sampler.sample_mpi(models[args.model], position, y, period, bounds, trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met, dynamics=dynamics[args.dyn])
 
 if comm.Get_rank() == 0:
 
