@@ -319,9 +319,10 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
     prng_key, subkey = jax.random.split(prng_key)
     u = jax.random.uniform(subkey, shape=E_out.shape)
     accept = np.log(u) < -(H1 - H0)
+    failed = np.isinf(E_out)
 
     if not metropolize:
-        accept = np.isfinite(E_traj)
+        accept = np.isfinite(E_out)
 
     accept = accept.reshape((accept.size, 1))
     position_out = np.where(accept, position_out, position)
@@ -337,7 +338,7 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
         colloc_solver.y = y_prev
         colloc_solver.p = p_prev.at[-1].set(0)
 
-    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept.ravel(), prng_key
+    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept.ravel(), failed, prng_key
 
 def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None, thin=1, metropolize=True):
 
@@ -348,6 +349,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
     y_out = numpy.full((L // thin, colloc_solver.y.size), np.nan)
     p_out = numpy.full((L // thin, colloc_solver.p.size), np.nan)
     accept = numpy.zeros(L // thin, np.bool_)
+    failed = numpy.zeros(L // thin, np.bool_)
 
     momentum = np.zeros_like(position)
 
@@ -370,6 +372,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
         prng_key, subkey = jax.random.split(prng_key)
         u = jax.random.uniform(subkey)
         accept[j] = np.log(u) < -(E_propose - E)
+        failed[j] = np.isinf(E)
 
         if accept[j]:
             position = position_propose
@@ -385,7 +388,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
             p_out[j] = colloc_solver.p
             j += 1
 
-    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
+    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, failed, prng_key
 
 def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition):
 
@@ -435,15 +438,14 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 j_other = np.logical_not(j).astype(np.int64)
                 wcov_dat = out[i * save_length, j_other * (n_walkers // 2):(j_other + 1) * (n_walkers // 2), :position.shape[1]]
 
-                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = dynamics(
+                pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, failed, prng_key = dynamics(
                     out[i * save_length, k, :position.shape[1]], save_length * thin,
                     dt, friction, wcov_dat, wcov_scale=2e-1, wcov_weight=1,
                     prng_key=prng_key, energy_function=compute_energy_and_force, 
                     colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev, thin=thin)
 
                 accepted = accepted.at[k].add(accept.sum())
-                failed = failed.at[k].add(np.isinf(E_traj).sum())
-                rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept.ravel()), np.isfinite(E_traj)).sum())
+                rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept), np.logical_not(failed)).sum())
                 
                 out_traj = np.concatenate([pos_traj, E_traj.reshape((E_traj.size, 1)), F_traj, y_traj, p_traj[:, :1]], axis=1)
                 out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k].set(out_traj)
