@@ -62,6 +62,10 @@ def grad_bounds(position, bounds):
 
 def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_multiplier_threshold=0.8):
 
+    y_prev = colloc_solver.y
+    p_prev = colloc_solver.p
+    args_prev = colloc_solver.args
+
     E = 0
     F = np.zeros(position.shape)
 
@@ -94,6 +98,10 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
         y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5)
 
     if p_cont[-1, 1] != 1:
+        colloc_solver.args = args_prev
+        colloc_solver.args[-2].reaction_consts = np.exp(position)
+        colloc_solver.y = y_prev
+        colloc_solver.p = p_prev.at[-1].set(0)
         return np.inf, F
 
     J = colloc_solver.jac()
@@ -265,9 +273,13 @@ def generate_langevin_trajectory(position, L, dt, friction, prng_key, stepper, e
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
-def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None, thin=1):
+def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None, thin=1, metropolize=True):
 
     prng_key, subkey = jax.random.split(prng_key)
+
+    y_prev = colloc_solver.y
+    p_prev = colloc_solver.p
+    args_prev = colloc_solver.args
 
     position_out = numpy.full((L // thin, *position.shape), np.nan)
     momentum_out = numpy.full((L // thin, *position.shape), np.nan)
@@ -279,9 +291,9 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
     momentum = jax.random.normal(subkey, position.shape)
 
     if F_prev is None or E_prev is None:
-        E, F = energy_function(position, momentum, colloc_solver, bounds)
-    else:
-        E, F = E_prev, F_prev
+        E_prev, F_prev = energy_function(position, momentum, colloc_solver, bounds)
+
+    E, F = E_prev, F_prev
 
     H0 = E + np.linalg.norm(momentum)**2 / 2
     j = 0
@@ -308,9 +320,26 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
     u = jax.random.uniform(subkey, shape=E_out.shape)
     accept = np.log(u) < -(H1 - H0)
 
-    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
+    if not metropolize:
+        accept = np.isfinite(E_traj)
 
-def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None, thin=1):
+    accept = accept.reshape((accept.size, 1))
+    position_out = np.where(accept, position_out, position)
+    momentum_out = np.where(accept, momentum_out, momentum)
+    E_out = np.where(accept.ravel(), E_out, E_prev)
+    F_out = np.where(accept, F_out, F_prev)
+    y_out = np.where(accept, y_out, y_prev.ravel(order="F"))
+    p_out = np.where(accept, p_out, p_prev)
+
+    if not accept[-1]:
+        colloc_solver.args = args_prev
+        colloc_solver.args[-2].reaction_consts = np.exp(position)
+        colloc_solver.y = y_prev
+        colloc_solver.p = p_prev.at[-1].set(0)
+
+    return position_out, momentum_out, E_out, F_out, y_out, p_out, accept.ravel(), prng_key
+
+def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wcov_scale, wcov_weight, prng_key, energy_function, colloc_solver, bounds, E_prev=None, F_prev=None, thin=1, metropolize=True):
 
     position_out = numpy.full((L // thin, *position.shape), np.nan)
     momentum_out = numpy.full((L // thin, *position.shape), np.nan)
@@ -318,6 +347,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
     F_out = numpy.full((L // thin, *position.shape), np.nan)
     y_out = numpy.full((L // thin, colloc_solver.y.size), np.nan)
     p_out = numpy.full((L // thin, colloc_solver.p.size), np.nan)
+    accept = numpy.zeros(L // thin, np.bool_)
 
     momentum = np.zeros_like(position)
 
@@ -339,8 +369,9 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
 
         prng_key, subkey = jax.random.split(prng_key)
         u = jax.random.uniform(subkey)
+        accept[i] = np.log(u) < -(E_propose - E)
 
-        if np.log(u) < -(E_propose - E):
+        if accept[i]:
             position = position_propose
             E = E_propose
             F = F_propose
@@ -353,8 +384,6 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
             y_out[j] = colloc_solver.y.ravel(order="F")
             p_out[j] = colloc_solver.p
             j += 1
-
-    accept = np.ones_like(E_out)
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, prng_key
 
@@ -412,23 +441,12 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                     prng_key=prng_key, energy_function=compute_energy_and_force, 
                     colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev, thin=thin)
 
-                if not metropolize:
-                    accept = np.isfinite(E_traj)
-
-                accept = accept.reshape((accept.size, 1))
-
                 accepted = accepted.at[k].add(accept.sum())
                 failed = failed.at[k].add(np.isinf(E_traj).sum())
                 rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept.ravel()), np.isfinite(E_traj)).sum())
                 
                 out_traj = np.concatenate([pos_traj, E_traj.reshape((E_traj.size, 1)), F_traj, y_traj, p_traj[:, :1]], axis=1)
                 out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k].set(np.where(accept, out_traj, out[i * save_length, k]))
-
-                if not accept[-1]:
-                    solver[k].args = args_prev
-                    solver[k].args[-2].reaction_consts = np.exp(out[i * save_length, k, :position.shape[1]])
-                    solver[k].y = out[i * save_length, k, 2 * position.shape[1] + 1:2 * position.shape[1] + 1 + y0[k].size].reshape((n_dim, y0[k].size // n_dim), order="F")
-                    solver[k].p = np.concatenate([out[i * save_length, k, 2 * position.shape[1] + 1 + y0[k].size: 2 * position.shape[1] + 1 + y0[k].size + np.size(period0)], np.array([0])])
 
                 pos_partial = np.copy(out[i * save_length + 1:(i + 1) * save_length + 1, j * (n_walkers // 2):(j + 1) * (n_walkers // 2)])
                 #allwalkers, _ = mpi4jax.allreduce(x=pos_partial, op=MPI.SUM, comm=comm)
