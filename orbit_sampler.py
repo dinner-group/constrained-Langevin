@@ -446,7 +446,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept.ravel()), np.isfinite(E_traj)).sum())
                 
                 out_traj = np.concatenate([pos_traj, E_traj.reshape((E_traj.size, 1)), F_traj, y_traj, p_traj[:, :1]], axis=1)
-                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k].set(np.where(accept, out_traj, out[i * save_length, k]))
+                out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k].set(out_traj)
 
                 pos_partial = np.copy(out[i * save_length + 1:(i + 1) * save_length + 1, j * (n_walkers // 2):(j + 1) * (n_walkers // 2)])
                 #allwalkers, _ = mpi4jax.allreduce(x=pos_partial, op=MPI.SUM, comm=comm)
