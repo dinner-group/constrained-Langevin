@@ -369,9 +369,9 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
 
         prng_key, subkey = jax.random.split(prng_key)
         u = jax.random.uniform(subkey)
-        accept[i] = np.log(u) < -(E_propose - E)
+        accept[j] = np.log(u) < -(E_propose - E)
 
-        if accept[i]:
+        if accept[j]:
             position = position_propose
             E = E_propose
             F = F_propose
