@@ -205,7 +205,7 @@ def baoab_precondition(position, momentum, F_prev, dt, friction, wcov_dat, wcov_
     
     B1 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
     position = position + (dt / 2) * B1@momentum
-    
+
     B2 = B_wcov(position, wcov_dat, wcov_scale, wcov_weight)
     E, F = energy_function(position, momentum, *energy_function_args)
     momentum = momentum + (dt / 2) * B2.T@F
@@ -442,13 +442,13 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                     out[i * save_length, k, :position.shape[1]], save_length * thin,
                     dt, friction, wcov_dat, wcov_scale=2e-1, wcov_weight=1,
                     prng_key=prng_key, energy_function=compute_energy_and_force, 
-                    colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev, thin=thin)
+                    colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev, thin=thin, metropolize=metropolize)
 
                 accepted = accepted.at[k].add(accept.sum())
                 rejected = rejected.at[k].add(np.logical_and(np.logical_not(accept), np.logical_not(fail)).sum())
                 failed = failed.at[k].add(fail.sum())
                 
-                out_traj = np.concatenate([pos_traj, E_traj.reshape((E_traj.size, 1)), F_traj, y_traj, p_traj[:, :1]], axis=1)
+                out_traj = np.concatenate([pos_traj, E_traj.reshape((E_traj.size, 1)), F_traj, y_traj, p_traj[:, :-1]], axis=1)
                 out = out.at[i * save_length + 1:(i + 1) * save_length + 1, k].set(out_traj)
 
                 pos_partial = np.copy(out[i * save_length + 1:(i + 1) * save_length + 1, j * (n_walkers // 2):(j + 1) * (n_walkers // 2)])
@@ -457,6 +457,10 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 out = out.at[i * save_length + 1:(i + 1) * save_length + 1, j * (n_walkers // 2):(j + 1) * (n_walkers // 2)].set(allwalkers)
 
                 print("Iteration:%d Walker:%d Accepted:%d Rejected:%d Failed:%d"%(i, k, accepted[k], rejected[k], failed[k]), flush=True)
+
+    accepted = comm.allreduce(accepted, op=MPI.SUM)
+    rejected = comm.allreduce(failed, op=MPI.SUM)
+    failed = comm.allreduce(failed, op=MPI.SUM)
 
     return out[1:], accepted, rejected, failed
 
