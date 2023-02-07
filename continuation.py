@@ -353,22 +353,22 @@ def bc_rc(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, mod
 
 @jax.jit
 def f_par(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, par_direction):
-    par = p[1] * model.par_direction + model.reaction_consts
+    par = p[1] * par_direction + model.par
     return p[0] * model.f_red(t, y, par=par)
 
 @jax.jit
 def bc_par(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, par_direction):
-    
-    par = p[1] * model.par_direction + model.reaction_consts
+
+    par = p[1] * par_direction + model.par
     n_points = y.size // model.n_dim
-    continuation_direction = normalize_direction(continuation_direction, t, n_dim, n_points)
+    continuation_direction = normalize_direction(continuation_direction, t, model.n_dim, n_points)
 
     def loop_body(carry, _):
         i = carry
-        return i + 1, f_rc(t, y_prev.reshape((n_dim, n_points), order="F")[:, i], p_prev, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, par_direction)
+        return i + 1, f_par(t, y_prev.reshape((model.n_dim, n_points), order="F")[:, i], p_prev, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, par_direction)
 
-    ydot = jax.lax.scan(loop_body, init=0, xs=None, length=n_points)[1].T    
+    ydot = jax.lax.scan(loop_body, init=0, xs=None, length=n_points)[1].T
 
-    return np.array([newton_cotes_6(t, np.sum(y.reshape((n_dim, n_points), order="F") * ydot, axis=0)),
-                     newton_cotes_6(t, np.sum((y - y_guess).reshape((n_dim, n_points), order="F") * continuation_direction[:y.size].reshape((n_dim, n_points), order="F"), axis=0))\
+    return np.array([newton_cotes_6(t, np.sum(y.reshape((model.n_dim, n_points), order="F") * ydot, axis=0)),
+                     newton_cotes_6(t, np.sum((y - y_guess).reshape((model.n_dim, n_points), order="F") * continuation_direction[:y.size].reshape((model.n_dim, n_points), order="F"), axis=0))\
                     + (p - p_guess)@continuation_direction[y.size:]])
