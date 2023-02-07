@@ -60,6 +60,12 @@ def E_bounds(position, bounds):
 def grad_bounds(position, bounds):
     return jax.jacrev(E_bounds)(position, bounds)
 
+@jax.jit
+def smooth_max(x, beta=2):
+    return np.sum(x * np.exp(beta * x)) / np.exp(beta * x).sum()
+
+grad_smooth_max = jax.jit(jax.jacfwd(smooth_max))
+
 def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_multiplier_threshold=0.8):
 
     y_prev = colloc_solver.y
@@ -126,6 +132,91 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
 
     E += E_arclength(y_cont[-1])
     F -= grad_arclength(y_cont[-1]).ravel(order="F")@J_rc[:colloc_solver.y.size, :]
+
+    E += 1e-1 * (smooth_max(y_cont[-1]) - 35)**2
+    F -= 2e-1 * (smooth_max(y_cont[-1]) - 35) * grad_smooth_max(y_cont[-1].ravel(order="F"))@J_rc[:colloc_solver.y.size, :]
+
+    E += 1e-1 * (smooth_max(-y_cont[-1]) + 50)**2
+    F -= 2e-1 * (smooth_max(-y_cont[-1]) + 50) * grad_smooth_max(y_cont[-1].ravel(order="F"))@J_rc[:colloc_solver.y.size, :]
+
+    E += E_bounds(position, bounds)
+    F -= grad_bounds(position, bounds)
+
+    colloc_solver.args[5].reaction_consts = np.exp(position)
+
+    return E, F
+
+def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
+
+    y_prev = colloc_solver.y
+    p_prev = colloc_solver.p
+    args_prev = colloc_solver.args
+
+    E = 0
+    F = np.zeros(position.shape)
+
+    rc_direction = position - np.log(colloc_solver.args[5].reaction_consts)
+    natural_direction = np.zeros(colloc_solver.n).at[-1].set(1)
+    tangent_direction = colloc_solver.jac_LU.solve(numpy.asanyarray(natural_direction))
+    tangent_direction = tangent_direction / tangent_direction[-1]
+
+    colloc_solver.p = colloc_solver.p.at[-1].set(0)
+
+    y_guess = colloc_solver.y + tangent_direction[:-colloc_solver.n_par].reshape(colloc_solver.y.shape, order="F")
+    p_guess = colloc_solver.p + tangent_direction[-colloc_solver.n_par:]
+    continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, y_guess, p_guess, rc_direction)
+    colloc_solver.y = y_guess
+    colloc_solver.p = p_guess
+
+    colloc_solver.solve(tol=1e-5)
+
+    y_cont = np.array([colloc_solver.y])
+    p_cont = np.array([colloc_solver.p])
+
+    if not colloc_solver.success:
+
+        colloc_solver.y = colloc_solver.args[1].reshape(colloc_solver.y.shape, order="F")
+        colloc_solver.p = colloc_solver.args[2]
+        continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, colloc_solver.y, colloc_solver.p, rc_direction)
+        y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=None, min_step_size=1e-5, tol=1e-5)
+
+    if p_cont[-1, 1] > 1:
+        try:
+            y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5)
+        except RuntimeError:
+            solver.success = False
+
+    if p_cont[-1, 1] != 1 or not colloc_solver.success:
+        colloc_solver.args = args_prev
+        colloc_solver.args[-2].reaction_consts = np.exp(position)
+        colloc_solver.y = y_prev
+        colloc_solver.p = p_prev.at[-1].set(0)
+        return np.inf, F
+
+    J = colloc_solver.jac()
+    J = J[:-colloc_solver.n_par + 1, :-colloc_solver.n_par + 1]
+    J_LU = scipy.sparse.linalg.splu(J) 
+    J_rc = np.zeros((colloc_solver.n - 1, position.size))
+
+    for i in range(position.size):
+
+        rc_direction = np.zeros(position.shape).at[i].set(1)
+        args = list(colloc_solver.args)
+        args[-1] = rc_direction
+        colloc_solver.args = tuple(args)
+        dr_drc = colloc_solver.jacp(y_cont[-1].ravel(order="F"), p_cont[-1])[:-colloc_solver.n_par + 1, 1]
+        J_rc = J_rc.at[:, i].set(J_LU.solve(-numpy.asanyarray(dr_drc)))
+
+    if p_cont[-1, 0] > 500:
+        E += 300 * (p_cont[-1, 0] - 500)**2
+        F -= 600 * (p_cont[-1, 0] - 500) * J_rc[colloc_solver.y.size, :]
+
+    if p_cont[-1, 0] < 100:
+        E += 300 * (p_cont[-1, 0] - 100)**2
+        F -= 600 * (p_cont[-1, 0] - 100) * J_rc[colloc_solver.y.size, :]
+
+    E += E_arclength(y_cont[-1], min_arclength=30)
+    F -= grad_arclength(y_cont[-1], min_arclength=30).ravel(order="F")@J_rc[:colloc_solver.y.size, :]
 
     #E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
     #F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
@@ -393,7 +484,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, fail, prng_key
 
-def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition):
+def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition, energy_function=compute_energy_and_force):
 
     if seed is None:
         seed = time.time_ns()
@@ -418,7 +509,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
             solver[j] = colloc(continuation.f_rc, continuation.bc_rc, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
             solver[j]._superLU()
 
-            E, F = compute_energy_and_force(position[j], np.zeros(position.shape[1]), solver[j], bounds)
+            E, F = energy_function(position[j], np.zeros(position.shape[1]), solver[j], bounds)
 
             out = out.at[0, j, position.shape[1]:].set(np.concatenate([np.array([E]), F, y0[j].ravel(order="F"), np.array([period0[j]])]))
 
@@ -444,7 +535,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
                 pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, fail, prng_key = dynamics(
                     out[i * save_length, k, :position.shape[1]], save_length * thin,
                     dt, friction, wcov_dat, wcov_scale=2e-1, wcov_weight=1,
-                    prng_key=prng_key, energy_function=compute_energy_and_force, 
+                    prng_key=prng_key, energy_function=energy_function, 
                     colloc_solver=solver[k], bounds=bounds, E_prev=E_prev, F_prev=F_prev, thin=thin, metropolize=metropolize)
 
                 accepted = accepted.at[k].add(accept.sum())
