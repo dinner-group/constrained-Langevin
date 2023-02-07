@@ -404,5 +404,39 @@ class Brusselator:
 
         return cls(*children, **aux_data)
 
+class Morris_Lecar:
+
+    n_dim = 3
+    
+    def __init__(self, par):
+        self.par = par
+
+    @jax.jit
+    def f(self, t, y, par=None):
+
+        if par is None:
+            par = self.par
+
+        dy = np.zeros_like(y)
+        dy = dy.at[0].set((I_ext - par[0] * (y[0] - par[1]) - par[2] * y[1] * (y[0] - par[3]) - par[4] * y[2] * (y[0] - par[5]) - par[6] / np.cosh((y[0] - par[7]) / par[8])**2 * (y[0] - par[5])) / par[9])
+        dy = dy.at[1].set(np.exp(par[10]) * ((1 + np.tanh((y[0] - par[11]) / par[12])) / 2 - y[1]) * np.cosh((y[0] - par[11]) / par[13]))
+        dy = dy.at[2].set(np.exp(par[14]) * ((1 + np.tanh((y[0] - par[15]) / par[16])) / 2 - y[2]) * np.cosh((y[0] - par[15]) / par[17]))
+
+        return dy
+
+    f_red = f
+
+    @jax.jit
+    def jac(self, t, y, par=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, par)
+
+    def _tree_flatten(self):
+        children = (self.par,)
+        aux_data = {}
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
 jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
