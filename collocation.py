@@ -318,47 +318,34 @@ class colloc:
     def damped_newton_1(self, tol=1e-6, min_damping_factor=1e-2, maxiter=20):
 
         self.success = False
+        x = np.concatenate([self.y.ravel(order="F"), self.p])
         r, scale = self._resid_and_scale()
         self.err = np.max(np.abs(r / (1 + scale)))
         self.n_iter = 0
         damping_factor = 1
-        x = np.concatenate([self.y.ravel(order="F"), self.p])
-        b = np.zeros(self.n)
-        contraction_factor = 1
-        m = 1
+        contraction_factor = np.inf
 
         while self.n_iter < maxiter and self.err > tol:
 
             self.n_iter += 1
             self._superLU()
+            r, scale = self._resid_and_scale(x[:self.y.size], x[self.y.size:])
             dx = self.jac_LU.solve(-numpy.asanyarray(r))
-            damping_factor = m / contraction_factor
-            damping_factor = np.minimum(1, damping_factor)
+            self.err = np.max(np.abs(r / (1 + scale)))
 
-            while damping_factor > min_damping_factor:
+            while damping_factor > min_damping_factor and contraction_factor > 1:
 
                 x_propose = x + damping_factor * dx
-                r_propose, scale_propose = self._resid_and_scale(x_propose[:-self.n_par], x_propose[-self.n_par:])
+                r_propose, scale_propose = self._resid_and_scale(x[:self.y.size], x[self.y.size:])
                 err_propose = np.max(np.abs(r_propose / (1 + scale_propose)))
                 contraction_factor = err_propose / self.err
-                m = (self.err / 2) * damping_factor ** 2 / np.max(np.abs(r_propose / scale_propose - (1 - damping_factor) * r / scale))
-
-                if contraction_factor > 1 - damping_factor / 4:
-                    damping_factor = np.minimum(m, damping_factor / 2)
+                
+                if contraction_factor > 1:
+                    damping_factor /= 2
                 else:
-                    l = np.minimum(1, m)
-                    if l >= 4 * damping_factor:
-                        damping_factor = l
-                    else:
-                        break
+                    self.err = err_propose
 
-            if damping_factor < min_damping_factor:
-                break
-            else:
-                self.err = err_propose
-                r = r_propose
-                sclae = scale_propose
-                x = x_propose
+            x = x + damping_factor * dx
 
         self.success = self.err <= tol
 
