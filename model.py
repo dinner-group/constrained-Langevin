@@ -433,6 +433,7 @@ class Morris_Lecar:
     def _tree_flatten(self):
         children = (self.par,)
         aux_data = {}
+        return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
