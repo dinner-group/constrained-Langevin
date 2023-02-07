@@ -418,9 +418,9 @@ class Morris_Lecar:
             par = self.par
 
         dy = np.zeros_like(y)
-        dy = dy.at[0].set((I_ext - par[0] * (y[0] - par[1]) - par[2] * y[1] * (y[0] - par[3]) - par[4] * y[2] * (y[0] - par[5]) - par[6] / np.cosh((y[0] - par[7]) / par[8])**2 * (y[0] - par[5])) / par[9])
-        dy = dy.at[1].set(np.exp(par[10]) * ((1 + np.tanh((y[0] - par[11]) / par[12])) / 2 - y[1]) * np.cosh((y[0] - par[11]) / par[13]))
-        dy = dy.at[2].set(np.exp(par[14]) * ((1 + np.tanh((y[0] - par[15]) / par[16])) / 2 - y[2]) * np.cosh((y[0] - par[15]) / par[17]))
+        dy = dy.at[0].set((par[0] - par[1] * (y[0] - par[2]) - par[3] * y[1] * (y[0] - par[4]) - par[5] * y[2] * (y[0] - par[6]) - par[7] / np.cosh((y[0] - par[8]) / par[9])**2 * (y[0] - par[6])) / par[10])
+        dy = dy.at[1].set(np.exp(par[11]) * ((1 + np.tanh((y[0] - par[12]) / par[13])) / 2 - y[1]) * np.cosh((y[0] - par[12]) / par[14]))
+        dy = dy.at[2].set(np.exp(par[15]) * ((1 + np.tanh((y[0] - par[16]) / par[17])) / 2 - y[2]) * np.cosh((y[0] - par[16]) / par[18]))
 
         return dy
 
