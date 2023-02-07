@@ -312,7 +312,7 @@ def f_a(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model
     return p[0] * model.f_red(t, y, a0=p[1])
 
 @jax.jit
-def fp_a(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model):
+def bc_a(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model):
     
     n_dim = model.n_dim - model.n_conserve
     n_points = y.size // (model.n_dim - model.n_conserve)
@@ -334,7 +334,7 @@ def f_rc(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, mode
     return p[0] * model.f_red(t, y, reaction_consts=reaction_consts)
 
 @jax.jit
-def fp_rc(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, rc_direction):
+def bc_rc(t, y, p, continuation_direction, y_prev, p_prev, y_guess, p_guess, model, rc_direction):
     
     reaction_consts = np.exp(p[1] * rc_direction) * model.reaction_consts
     n_dim = model.n_dim - model.n_conserve

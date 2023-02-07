@@ -415,7 +415,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
             odes[j] = odesystem(np.exp(position[j]))
             p0 = np.array([period0[j], 0])
             solver_args = (np.zeros(y0[j].size + p0.size).at[-1].set(1), y0[j].ravel(order="F"), p0, y0[j].ravel(order="F"), p0, odes[j], np.zeros(position.shape[1]))
-            solver[j] = colloc(continuation.f_rc, continuation.fp_rc, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
+            solver[j] = colloc(continuation.f_rc, continuation.bc_rc, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
             solver[j]._superLU()
 
             E, F = compute_energy_and_force(position[j], np.zeros(position.shape[1]), solver[j], bounds)
@@ -478,7 +478,7 @@ def sample(odesystem, position, y0, period0, bounds, trajectory_length, dt=1e-3,
     n_dim = odes.n_dim - odes.n_conserve
     p0 = np.array([period0, 0])
     solver_args = (np.zeros(y0.size + p0.size).at[-1].set(1), y0.ravel(order="F"), p0, y0.ravel(order="F"), p0, odes, np.zeros(position.size))
-    solver = colloc(continuation.f_rc, continuation.fp_rc, y0.reshape((n_dim, y0.size // n_dim), order="F"), p0, solver_args)
+    solver = colloc(continuation.f_rc, continuation.bc_rc, y0.reshape((n_dim, y0.size // n_dim), order="F"), p0, solver_args)
     solver._superLU()
 
     out = numpy.empty((trajectory_length * maxiter + 1, position.size + 1 + position.size + y0.size + np.size(period0)))
