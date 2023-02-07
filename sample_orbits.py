@@ -48,7 +48,7 @@ else:
 init = np.load(args.i)
 position = init[-1, :, :models[args.model][0].n_par]
 
-y_size = (n_mesh_point * colloc.n_colloc_point + 1) * (models[args.model].n_dim - models[args.model].n_conserve)
+y_size = (n_mesh_point * colloc.n_colloc_point + 1) * (models[args.model][0].n_dim - models[args.model][0].n_conserve)
 y = init[-1, :, 2 * models[args.model][0].n_par + 1:2 * models[args.model][0].n_par + 1 + y_size]
 
 period = init[-1, :, 2 * models[args.model][0].n_par + 1 + y_size + 1]
