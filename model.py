@@ -11,7 +11,7 @@ class KaiODE:
     ind_ATP = np.array([7, 11, 12, 17, 20, 23, 26, 30])
     n_dim = 17
     n_conserve = 2
-    n_react = 50
+    n_par = 50
     S_sp = jax.experimental.sparse.BCOO((np.array([1,  1,  1, -1, -1,  1,  1, -1, -1,  1, -1,  1,  1, -1, -1, -1,  1,  1, -1,  1, -1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1, 
                                                     -1, -1,  1, -1,  1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1, -1,  1, -1, -1,  1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1, -1,  
                                                     1, -1,  1,  1,  1,  1, -1, -1, -1, -1, -1,  1,  1, 1,  1, -1, -1,  1, -1,  1, -1, -1, -1,  1, -1,  1,  1, -1, 1,  1,  1, 
@@ -26,14 +26,14 @@ class KaiODE:
                                                     [14, 36], [14, 47], [14, 49], [15, 32], [15, 34], [15, 36], [15, 37], [15, 48], [15, 49], [16,  0], [16,  5], [16,  9], [16, 14], 
                                                     [16, 21], [16, 22], [16, 25], [16, 28], [16, 29], [16, 32], [16, 33], [16, 36], [16, 38], [16, 39], [16, 40], [16, 41], [16, 42], 
                                                     [16, 43], [16, 44], [16, 45], [16, 46], [16, 47], [16, 48], [16, 49]])),
-                                        shape=(n_dim, n_react))
+                                        shape=(n_dim, n_par))
     K_sp = jax.experimental.sparse.BCOO((np.ones(62),
                                         np.array([[ 0, 38], [ 1,  0], [ 1,  7], [ 1, 17], [ 2,  1], [ 2, 39], [ 3,  3], [ 3,  5], [ 3, 11], [ 4,  6], [ 4, 15], [ 4, 20], [ 4, 40], 
                                                     [ 5,  8], [ 5,  9], [ 5, 18], [ 5, 23], [ 6,  2], [ 6, 26], [ 6, 41], [ 7,  4], [ 7, 12], [ 7, 14], [ 7, 30], [ 8, 10], [ 8, 16], 
                                                     [ 8, 27], [ 8, 42], [ 8, 44], [ 9, 13], [ 9, 21], [ 9, 31], [ 9, 45], [10, 43], [10, 47], [11, 19], [11, 24], [11, 28], [11, 48], 
                                                     [12, 22], [12, 35], [12, 46], [13, 25], [13, 33], [13, 37], [14, 29], [14, 49], [15, 32], [15, 34], [15, 36], [16, 38], [16, 39], 
                                                     [16, 40], [16, 41], [16, 42], [16, 43], [16, 44], [16, 45], [16, 46], [16, 47], [16, 48], [16, 49]])),
-                                        shape=(n_dim, n_react))
+                                        shape=(n_dim, n_par))
     
     def __init__(self, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.):
         self.a0 = a0
@@ -274,7 +274,7 @@ class KaiODE:
             z = z.at[self.K_sp.indices[i, 1]].multiply(y[self.K_sp.indices[i, 0]]**self.K_sp.data[i])
             return (i + 1, z), _
 
-        z = reaction_consts * jax.lax.scan(loop1, init=(0, np.ones(KaiODE.n_react)), xs=None, length=self.K_sp.data.size)[0][1]
+        z = reaction_consts * jax.lax.scan(loop1, init=(0, np.ones(KaiODE.n_par)), xs=None, length=self.K_sp.data.size)[0][1]
         return jax.experimental.sparse.sparsify(lambda M, x:M@x)(self.S_sp, z)
 
     @jax.jit
@@ -366,7 +366,7 @@ class KaiODE:
 class Brusselator:
 
     n_dim = 2
-    n_react = 3
+    n_par = 3
     n_conserve = 0
     S = np.array([[ 1,  1, -1, -1],
                   [ 0, -1,  1,  0]])
@@ -407,6 +407,7 @@ class Brusselator:
 class Morris_Lecar:
 
     n_dim = 3
+    n_par = 17
     
     def __init__(self, par):
         self.par = par
