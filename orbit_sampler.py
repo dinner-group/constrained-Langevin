@@ -66,7 +66,7 @@ def smooth_max(x, beta=2):
 
 grad_smooth_max = jax.jit(jax.jacfwd(smooth_max))
 
-def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_multiplier_threshold=0.8):
+def compute_energy_and_force_kai(position, momentum, colloc_solver, bounds, floquet_multiplier_threshold=0.8):
 
     y_prev = colloc_solver.y
     p_prev = colloc_solver.p
@@ -155,7 +155,7 @@ def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
     E = 0
     F = np.zeros(position.shape)
 
-    rc_direction = position - np.log(colloc_solver.args[5].reaction_consts)
+    rc_direction = position - colloc_solver.args[5].par
     natural_direction = np.zeros(colloc_solver.n).at[-1].set(1)
     tangent_direction = colloc_solver.jac_LU.solve(numpy.asanyarray(natural_direction))
     tangent_direction = tangent_direction / tangent_direction[-1]
@@ -188,7 +188,7 @@ def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
 
     if p_cont[-1, 1] != 1 or not colloc_solver.success:
         colloc_solver.args = args_prev
-        colloc_solver.args[-2].reaction_consts = np.exp(position)
+        colloc_solver.args[-2].par = position
         colloc_solver.y = y_prev
         colloc_solver.p = p_prev.at[-1].set(0)
         return np.inf, F
@@ -207,7 +207,7 @@ def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
         dr_drc = colloc_solver.jacp(y_cont[-1].ravel(order="F"), p_cont[-1])[:-colloc_solver.n_par + 1, 1]
         J_rc = J_rc.at[:, i].set(J_LU.solve(-numpy.asanyarray(dr_drc)))
 
-    if p_cont[-1, 0] > 500:
+    if p_cont[-1, 0] > 400:
         E += 300 * (p_cont[-1, 0] - 500)**2
         F -= 600 * (p_cont[-1, 0] - 500) * J_rc[colloc_solver.y.size, :]
 
@@ -224,7 +224,7 @@ def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
     E += E_bounds(position, bounds)
     F -= grad_bounds(position, bounds)
 
-    colloc_solver.args[5].reaction_consts = np.exp(position)
+    colloc_solver.args[5].par = position
 
     return E, F
 
@@ -484,7 +484,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, fail, prng_key
 
-def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition, energy_function=compute_energy_and_force):
+def sample_mpi(odesystem, energy_function, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition):
 
     if seed is None:
         seed = time.time_ns()
@@ -558,7 +558,7 @@ def sample_mpi(odesystem, position, y0, period0, bounds, trajectory_length, comm
 
     return out[1:], accepted, rejected, failed
 
-def sample(odesystem, position, y0, period0, bounds, trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
+def sample(odesystem, energy_function, position, y0, period0, bounds, trajectory_length, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True):
 
     if seed is None:
         seed = time.time_ns()
@@ -573,7 +573,7 @@ def sample(odesystem, position, y0, period0, bounds, trajectory_length, dt=1e-3,
     solver._superLU()
 
     out = numpy.empty((trajectory_length * maxiter + 1, position.size + 1 + position.size + y0.size + np.size(period0)))
-    E, F = compute_energy_and_force(position, np.zeros(position.size), solver, bounds)
+    E, F = energy_function(position, np.zeros(position.size), solver, bounds)
 
     out[0, :position.size] = position
     out[0, position.size] = E
@@ -588,7 +588,7 @@ def sample(odesystem, position, y0, period0, bounds, trajectory_length, dt=1e-3,
 
         prng_key, subkey = jax.random.split(prng_key)
         args_prev = solver.args
-        pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(position, trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=compute_energy_and_force, 
+        pos_traj, mom_new, E_traj, F_traj, y_traj, p_traj, accept, prng_key = generate_langevin_trajectory(position, trajectory_length, dt, friction, prng_key, stepper=obabo, energy_function=energy_function, 
                                                                                             colloc_solver=solver, bounds=bounds, E_prev=E, F_prev=F)
 
         if not metropolize:

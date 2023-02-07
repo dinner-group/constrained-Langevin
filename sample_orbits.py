@@ -28,7 +28,7 @@ parser.add_argument("-ubound", type=float, default=4.6)
 parser.add_argument("-nmesh", type=int, default=60)
 args = parser.parse_args()
 
-models = {"KaiODE":model.KaiODE, "Brusselator":model.Brusselator}
+models = {"KaiODE":(model.KaiODE, orbit_sampler.compute_energy_and_force_kai), "Brusselator":model.Brusselator, "Morris_Lecar":(model.Morris_Lecar, orbit_sampler.compute_energy_and_force_ml)}
 dynamics = {"preconditioned_langevin":orbit_sampler.generate_langevin_trajectory_precondition, "preconditioned_random_walk":orbit_sampler.random_walk_metropolis_precondition}
 
 comm = MPI.COMM_WORLD
@@ -48,7 +48,7 @@ y = init[-1, :, 2 * models[args.model].n_par + 1:2 * models[args.model].n_par + 
 
 period = init[-1, :, 2 * models[args.model].n_par + 1 + y_size + 1]
 
-result, accepted, rejected, failed = orbit_sampler.sample_mpi(models[args.model], position, y, period, bounds, trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met, dynamics=dynamics[args.dyn])
+result, accepted, rejected, failed = orbit_sampler.sample_mpi(*models[args.model], position, y, period, bounds, trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met, dynamics=dynamics[args.dyn])
 
 if comm.Get_rank() == 0:
 
