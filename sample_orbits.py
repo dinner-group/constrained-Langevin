@@ -23,8 +23,9 @@ parser.add_argument("-met", type=int, default=1)
 parser.add_argument("-dt", type=float, default=5e-4)
 parser.add_argument("-fric", type=float, default=1e-1)
 parser.add_argument("-model", type=str, default="KaiODE")
-parser.add_argument("-lbound", type=float, default=-4.6)
-parser.add_argument("-ubound", type=float, default=4.6)
+parser.add_argument("-lbound", type=float, default=-np.inf)
+parser.add_argument("-ubound", type=float, default=np.inf)
+parser.add_argument("-bounds", type=str)
 parser.add_argument("-nmesh", type=int, default=60)
 args = parser.parse_args()
 
@@ -38,15 +39,19 @@ if args.rst is None:
 
 n_mesh_point = args.nmesh
 reference = np.load(args.ref)
-bounds = np.vstack([reference[-1, :models[args.model].n_par] + args.lbound, reference[-1, :models[args.model].n_par] + args.ubound]).T
+
+if args.bounds is not None:
+    bounds = np.load(args.bounds)
+else:
+    bounds = np.vstack([reference[-1, :models[args.model][0].n_par] + args.lbound, reference[-1, :models[args.model][0].n_par] + args.ubound]).T
 
 init = np.load(args.i)
-position = init[-1, :, :models[args.model].n_par]
+position = init[-1, :, :models[args.model][0].n_par]
 
 y_size = (n_mesh_point * colloc.n_colloc_point + 1) * (models[args.model].n_dim - models[args.model].n_conserve)
-y = init[-1, :, 2 * models[args.model].n_par + 1:2 * models[args.model].n_par + 1 + y_size]
+y = init[-1, :, 2 * models[args.model][0].n_par + 1:2 * models[args.model][0].n_par + 1 + y_size]
 
-period = init[-1, :, 2 * models[args.model].n_par + 1 + y_size + 1]
+period = init[-1, :, 2 * models[args.model][0].n_par + 1 + y_size + 1]
 
 result, accepted, rejected, failed = orbit_sampler.sample_mpi(*models[args.model], position, y, period, bounds, trajectory_length=args.L, comm=comm, dt=args.dt, friction=args.fric, maxiter=args.n, seed=args.seed, thin=args.thin, metropolize=args.met, dynamics=dynamics[args.dyn])
 
