@@ -95,9 +95,12 @@ def compute_energy_and_force(position, momentum, colloc_solver, bounds, floquet_
         y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=None, min_step_size=1e-5, tol=1e-5)
 
     if p_cont[-1, 1] > 1:
-        y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5)
+        try:
+            y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5)
+        except RuntimeError:
+            solver.success = False
 
-    if p_cont[-1, 1] != 1:
+    if p_cont[-1, 1] != 1 or not colloc_solver.success:
         colloc_solver.args = args_prev
         colloc_solver.args[-2].reaction_consts = np.exp(position)
         colloc_solver.y = y_prev
