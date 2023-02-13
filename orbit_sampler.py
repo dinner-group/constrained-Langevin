@@ -133,12 +133,6 @@ def compute_energy_and_force_kai(position, momentum, colloc_solver, bounds, floq
     E += E_arclength(y_cont[-1])
     F -= grad_arclength(y_cont[-1]).ravel(order="F")@J_rc[:colloc_solver.y.size, :]
 
-    E += 1e-1 * (smooth_max(y_cont[-1]) - 35)**2
-    F -= 2e-1 * (smooth_max(y_cont[-1]) - 35) * grad_smooth_max(y_cont[-1].ravel(order="F"))@J_rc[:colloc_solver.y.size, :]
-
-    E += 1e-1 * (smooth_max(-y_cont[-1]) + 50)**2
-    F -= 2e-1 * (smooth_max(-y_cont[-1]) + 50) * grad_smooth_max(y_cont[-1].ravel(order="F"))@J_rc[:colloc_solver.y.size, :]
-
     E += E_bounds(position, bounds)
     F -= grad_bounds(position, bounds)
 
@@ -217,6 +211,12 @@ def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
 
     E += E_arclength(y_cont[-1], min_arclength=30)
     F -= grad_arclength(y_cont[-1], min_arclength=30).ravel(order="F")@J_rc[:colloc_solver.y.size, :]
+
+    E += 1e-1 * (smooth_max(y_cont[-1]) - 35)**2
+    F -= 2e-1 * (smooth_max(y_cont[-1]) - 35) * grad_smooth_max(y_cont[-1].ravel(order="F"))@J_rc[:colloc_solver.y.size, :]
+
+    E += 1e-1 * (smooth_max(-y_cont[-1]) + 50)**2
+    F -= 2e-1 * (smooth_max(-y_cont[-1]) + 50) * grad_smooth_max(y_cont[-1].ravel(order="F"))@J_rc[:colloc_solver.y.size, :]
 
     #E += E_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
     #F -= grad_floquet(y_cont[-1, :, 0], p_cont[-1, 0], position, colloc_solver.args[5].a0, colloc_solver.args[5].c0, floquet_multiplier_threshold)
