@@ -375,6 +375,8 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
     p_prev = colloc_solver.p
     args_prev = colloc_solver.args
 
+    position_prev = position
+    momentum_prev = jax.random.normal(subkey, position.shape)
     position_out = numpy.full((L // thin, *position.shape), np.nan)
     momentum_out = numpy.full((L // thin, *position.shape), np.nan)
     E_out = numpy.full(L // thin, np.inf)
@@ -382,7 +384,7 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
     y_out = numpy.full((L // thin, colloc_solver.y.size), np.nan)
     p_out = numpy.full((L // thin, colloc_solver.p.size), np.nan)
 
-    momentum = jax.random.normal(subkey, position.shape)
+    momentum = momentum_prev 
 
     if F_prev is None or E_prev is None:
         E_prev, F_prev = energy_function(position, momentum, colloc_solver, bounds)
@@ -419,8 +421,8 @@ def generate_langevin_trajectory_precondition(position, L, dt, friction, wcov_da
         accept = np.isfinite(E_out)
 
     accept = accept.reshape((accept.size, 1))
-    position_out = np.where(accept, position_out, position)
-    momentum_out = np.where(accept, momentum_out, momentum)
+    position_out = np.where(accept, position_out, position_prev)
+    momentum_out = np.where(accept, momentum_out, momentum_prev)
     E_out = np.where(accept.ravel(), E_out, E_prev)
     F_out = np.where(accept, F_out, F_prev)
     y_out = np.where(accept, y_out, y_prev.ravel(order="F"))
