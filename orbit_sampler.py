@@ -162,23 +162,24 @@ def compute_energy_and_force_ml(position, momentum, colloc_solver, bounds):
     colloc_solver.y = y_guess
     colloc_solver.p = p_guess
 
-    colloc_solver.solve(tol=1e-5)
+    try:
+        colloc_solver.solve(tol=1e-5)
 
-    y_cont = np.array([colloc_solver.y])
-    p_cont = np.array([colloc_solver.p])
+        y_cont = np.array([colloc_solver.y])
+        p_cont = np.array([colloc_solver.p])
 
-    if not colloc_solver.success:
+        if not colloc_solver.success:
 
-        colloc_solver.y = colloc_solver.args[1].reshape(colloc_solver.y.shape, order="F")
-        colloc_solver.p = colloc_solver.args[2]
-        continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, colloc_solver.y, colloc_solver.p, rc_direction)
-        y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=None, min_step_size=1e-5, tol=1e-5)
+            colloc_solver.y = colloc_solver.args[1].reshape(colloc_solver.y.shape, order="F")
+            colloc_solver.p = colloc_solver.args[2]
+            continuation.update_args(colloc_solver, natural_direction, colloc_solver.y, colloc_solver.p, colloc_solver.y, colloc_solver.p, rc_direction)
+            y_cont, p_cont = continuation.cont(colloc_solver, 1, -1e-1, step_size=1, termination_condition=None, min_step_size=1e-5, tol=1e-5)
 
-    if p_cont[-1, 1] > 1:
-        try:
-            y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5)
-        except RuntimeError:
-            solver.success = False
+        if p_cont[-1, 1] > 1:
+            y_cont, p_cont = continuation.cont(colloc_solver, p_cont[-1, 1] + 1e-1, 1, step_size=1 - p_cont[-1, 1], max_step_size=np.abs(1 - p_cont[-1, 1]), termination_condition=None, min_step_size=1e-5, tol=1e-5
+
+    except RuntimeError:
+        colloc_solver.success = False
 
     if p_cont[-1, 1] != 1 or not colloc_solver.success:
         colloc_solver.args = args_prev
