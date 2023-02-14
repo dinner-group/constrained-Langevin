@@ -35,11 +35,16 @@ class KaiODE:
                                                     [16, 40], [16, 41], [16, 42], [16, 43], [16, 44], [16, 45], [16, 46], [16, 47], [16, 48], [16, 49]])),
                                         shape=(n_dim, n_par))
     
-    def __init__(self, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1.):
+    def __init__(self, reaction_consts, a0=0.6, c0=3.5, ATPfrac=1., log_rc=False, **kwargs):
         self.a0 = a0
         self.c0 = c0
         self.ATPfrac = ATPfrac
-        self.reaction_consts = reaction_consts
+
+        if log_rc:
+            self.reaction_consts = np.exp(reaction_consts)
+        else:
+            self.reaction_consts = reaction_consts
+
         self.S = np.zeros((KaiODE.n_dim, self.reaction_consts.shape[0]))
         self.K = np.zeros_like(self.S)
         
@@ -373,9 +378,12 @@ class Brusselator:
     K = np.array([[0, 2, 1, 1],
                   [0, 1, 0, 0]])
 
-    def __init__(self, reaction_consts):
+    def __init__(self, reaction_consts, log_rc=False, **kwargs):
 
-        self.reaction_consts = reaction_consts
+        if log_rc:
+            self.reaction_consts = np.exp(reaction_consts)
+        else:
+            self.reaction_consts = reaction_consts
 
     @jax.jit
     def f(self, t, y, reaction_consts=None):
@@ -410,7 +418,7 @@ class Morris_Lecar:
     n_conserve = 0
     n_par = 19
     
-    def __init__(self, par):
+    def __init__(self, par, **kwargs):
         self.par = par
 
     @jax.jit

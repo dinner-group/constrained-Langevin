@@ -505,7 +505,7 @@ def sample_mpi(odesystem, energy_function, f_bvp, bc_bvp, position, y0, period0,
 
         for j in range(i * (n_walkers // 2) + comm.Get_rank(), i * (n_walkers // 2) + n_walkers // 2, comm.Get_size()):
 
-            odes[j] = odesystem(np.exp(position[j]))
+            odes[j] = odesystem(position[j], log_rc=True)
             p0 = np.array([period0[j], 0])
             solver_args = (np.zeros(y0[j].size + p0.size).at[-1].set(1), y0[j].ravel(order="F"), p0, y0[j].ravel(order="F"), p0, odes[j], np.zeros(position.shape[1]))
             solver[j] = colloc(f_bvp, bc_bvp, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
