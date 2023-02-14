@@ -44,8 +44,8 @@ def E_arclength(y, min_arclength=0.3):
     return np.where(arclength > min_arclength, 0, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4)
 
 @jax.jit 
-def grad_arclength(y):
-    return jax.jacrev(E_arclength)(y)
+def grad_arclength(y, min_arclength=0.3):
+    return jax.jacrev(E_arclength)(y, min_arclength)
 
 @jax.jit
 def E_bounds(position, bounds):
