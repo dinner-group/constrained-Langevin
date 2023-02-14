@@ -408,7 +408,7 @@ class Morris_Lecar:
 
     n_dim = 3
     n_conserve = 0
-    n_par = 17
+    n_par = 19
     
     def __init__(self, par):
         self.par = par
