@@ -1,5 +1,6 @@
 import orbit_sampler
 import model
+import continuation
 from collocation import colloc
 import jax
 import jax.numpy as np
