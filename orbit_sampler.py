@@ -486,7 +486,7 @@ def random_walk_metropolis_precondition(position, L, dt, friction, wcov_dat, wco
 
     return position_out, momentum_out, E_out, F_out, y_out, p_out, accept, fail, prng_key
 
-def sample_mpi(odesystem, energy_function, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition):
+def sample_mpi(odesystem, energy_function, f_bvp, bc_bvp, position, y0, period0, bounds, trajectory_length, comm, dt=1e-3, friction=1e-1, maxiter=1000, floquet_multiplier_threshold=8e-1, seed=None, thin=1, metropolize=True, dynamics=generate_langevin_trajectory_precondition):
 
     if seed is None:
         seed = time.time_ns()
@@ -508,7 +508,7 @@ def sample_mpi(odesystem, energy_function, position, y0, period0, bounds, trajec
             odes[j] = odesystem(np.exp(position[j]))
             p0 = np.array([period0[j], 0])
             solver_args = (np.zeros(y0[j].size + p0.size).at[-1].set(1), y0[j].ravel(order="F"), p0, y0[j].ravel(order="F"), p0, odes[j], np.zeros(position.shape[1]))
-            solver[j] = colloc(continuation.f_rc, continuation.bc_rc, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
+            solver[j] = colloc(f_bvp, bc_bvp, y0[j].reshape((n_dim, y0[j].size // n_dim), order="F"), p0, solver_args)
             solver[j]._superLU()
 
             E, F = energy_function(position[j], np.zeros(position.shape[1]), solver[j], bounds)

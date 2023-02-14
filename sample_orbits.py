@@ -29,7 +29,7 @@ parser.add_argument("-bounds", type=str)
 parser.add_argument("-nmesh", type=int, default=60)
 args = parser.parse_args()
 
-models = {"KaiODE":(model.KaiODE, orbit_sampler.compute_energy_and_force_kai), "Brusselator":model.Brusselator, "Morris_Lecar":(model.Morris_Lecar, orbit_sampler.compute_energy_and_force_ml)}
+models = {"KaiODE":(model.KaiODE, orbit_sampler.compute_energy_and_force_kai, continuation.f_rc, continuation.bc_rc), "Brusselator":model.Brusselator, "Morris_Lecar":(model.Morris_Lecar, orbit_sampler.compute_energy_and_force_ml, continuation.f_par, continuation.bc_par)}
 dynamics = {"preconditioned_langevin":orbit_sampler.generate_langevin_trajectory_precondition, "preconditioned_random_walk":orbit_sampler.random_walk_metropolis_precondition}
 
 comm = MPI.COMM_WORLD
