@@ -153,7 +153,7 @@ def rattle_step2(q1, p0, l, dt, kinetic, potential, constraint):
     return np.linalg.solve(A, b)
 	
 @partial(jax.jit, static_argnums=(1, 4, 5, 6, 7, 8))
-def sample(q0, nsteps, prng_key, dt=1e-1, kinetic, potential, constraint, max_newton_steps=10, tol=1e-9):
+def sample(q0, nsteps, prng_key, dt, kinetic, potential, constraint, max_newton_steps=10, tol=1e-9):
 
     traj = np.empty((nsteps, q0.shape[0]))
     accept = np.zeros(nsteps, dtype=bool)
