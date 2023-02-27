@@ -76,23 +76,22 @@ def potential(q):
     return 1e3 * E
 
 @jax.jit
-def cons(q, conserve=np.array([3.5, 0.6])):
+def constraint(q, conserve=np.array([3.5, 0.6])):
     
     c = C@np.exp(q)
     return c.at[-2:].add(-conserve)
-
-jac_cons = jax.jit(jax.jacfwd(cons, argnums=0))
 
 @jax.jit
 def kinetic(p, Minv=None):
 
     if Minv is None:
-        return np.linalg.norm(p)**2 / 2
+        return p@p / 2
     else:
         return p@Minv@p / 2
     
-def make_hamiltonian(T, U, Cns):   
-    return jax.jit(lambda q, p, l:T(p) + U(q) + l@Cns(q))
+@partial(jax.jit, static_argnums=(3, 4, 5))
+def hamiltonian(q, p, l, kinetic, potential, constraint):
+    return kinetic(p) + potential(q) + l@constraint(q)
     
 @jax.jit
 def propose_p(q, prng_subkey):
@@ -100,36 +99,31 @@ def propose_p(q, prng_subkey):
     p = jax.random.normal(prng_subkey, shape=q.shape)
     u, s, vh = jax.numpy.linalg.svd(jac_cons(q))
     return vh[17:, :].T@(vh[17:, :]@p)
-	
-H = make_hamiltonian(kinetic, lambda x:0, cons)
-H1 = make_hamiltonian(kinetic, potential, cons)
-H = H1
 
-@jax.jit
-def half1(par, q0, p0, dt):
+# @jax.jit
+# def half2(par, q1, p0, l, dt):
 
-    q1 = par[:q0.shape[0]]
-    l = par[q0.shape[0]:]
-    p0_5 = p0 - (dt / 2) * (jax.grad(H, argnums=0)(q0, p0, l) + l@jac_cons(q0))
+#     jac_cons = jax.jit(jax.jacfwd(cons, argnums=0))
+#     p1 = par[:p0.shape[0]]
+#     m = par[p0.shape[0]:]
+#     return np.concatenate([p0 - p1 - (dt / 2) * (jax.grad(hamiltonian, argnums=0)(q1, p0, l) + m@jac_cons(q1)),
+#                            jac_cons(q1)@jax.grad(hamiltonian, argnums=1)(q1, p1, m)])
+
+# jac_half2 = jax.jit(jax.jacfwd(half2, argnums=0))
+
+@partial(jax.jit, static_argnums=(3, 4, 5, 6, 7))
+def rattle_step1(q0, p0, dt, kinetic, potential, constraint, max_newton_iter=10, tol=1e-9):
     
-    return np.concatenate([q0 - q1 + (dt / 2) * (jax.grad(H, argnums=1)(q0, p0_5, np.zeros_like(l)) + jax.grad(H, argnums=1)(q1, p0_5, np.zeros_like(l))),
-                           cons(q1)])
-
-jac_half1 = jax.jit(jax.jacfwd(half1, argnums=0))
-
-@jax.jit
-def half2(par, q1, p0, l, dt):
-
-    p1 = par[:p0.shape[0]]
-    m = par[p0.shape[0]:]
-    return np.concatenate([p0 - p1 - (dt / 2) * (jax.grad(H, argnums=0)(q1, p0, l) + m@jac_cons(q1)),
-                           jac_cons(q1)@jax.grad(H, argnums=1)(q1, p1, m)])
-
-jac_half2 = jax.jit(jax.jacfwd(half2, argnums=0))
-
-@jax.jit
-def step1(q0, p0, dt, max_newton_iter=10, tol=1e-9):
-
+    def half1(par, q0, p0, dt):
+        jac_cons = jax.jacfwd(cons, argnums=0)
+        q1 = par[:q0.shape[0]]
+        l = par[q0.shape[0]:]
+        p0_5 = p0 - (dt / 2) * (jax.grad(hamiltonian, argnums=0)(q0, p0, l) + l@jac_cons(q0))
+        return np.concatenate([q0 - q1 + (dt / 2) * (jax.grad(hamiltonian, argnums=1)(q0, p0_5, np.zeros_like(l)) + jax.grad(hamiltonian, argnums=1)(q1, p0_5, np.zeros_like(l))),
+                               constraint(q1)])
+    
+    jac_half1 = jax.jacfwd(half1, argnums=0)
+    
     def cond(par):    
         x, step, err = par
         return (step < max_newton_iter) & (err > tol)
@@ -142,23 +136,24 @@ def step1(q0, p0, dt, max_newton_iter=10, tol=1e-9):
     x0 = np.concatenate([q0, np.zeros(C.shape[0])])
     return jax.lax.while_loop(cond, body, (x0, 0, np.linalg.norm(half1(x0, q0, p0, dt))))
 
-@jax.jit
-def step2(q1, p0, l, dt, max_newton_iter=10, tol=1e-9):
+@partial(jax.jit, static_argnums=(4, 5, 6))
+def rattle_step2(q1, p0, l, dt, kinetic, potential, constraint):
     
-    def cond(par):    
-        x, step, err = par
-        return (step < max_newton_iter) & (err > tol)
+    jac_cons = jax.jacfwd(cons, argnums=0)
+    C = jac_cons(q1)
+
+    A = np.zeros((p0.size + l.size, p0.size + l.size))
+    A = A.at[:p0.size, :p0.size].set(np.identity(p0.size))
+    A = A.at[:p0.size, p0.size:p0.size + l.size].set((dt / 2) * C.T)
+    A = A.at[p0.size:p0.size + l.size, :p0.size].set(C)
+
+    b = np.zeros(p0.size + l.size)
+    b = b.at[:p0.size].set(p0 - (dt / 2) * jax.grad(H, argnums=0)(q1, p0, l))
     
-    def body(par):
-        x, step, err = par
-        x = x + np.linalg.solve(jac_half2(x, q1, p0, l, dt), -half2(x, q1, p0, l, dt))
-        return x, step + 1, np.linalg.norm(half2(x, q1, p0, l, dt))
-    
-    x0 = np.concatenate([p0, np.zeros(C.shape[0])])
-    return jax.lax.while_loop(cond, body, (x0, 0, np.linalg.norm(half2(x0, q1, p0, l, dt))))
+    return np.linalg.solve(A, b)
 	
-@partial(jax.jit, static_argnums=1)
-def sample(q0, nsteps, prng_key, dt=1e-1, max_newton_steps=10, tol=1e-9):
+@partial(jax.jit, static_argnums=(1, 4, 5, 6, 7, 8))
+def sample(q0, nsteps, prng_key, dt=1e-1, kinetic, potential, constraint, max_newton_steps=10, tol=1e-9):
 
     traj = np.empty((nsteps, q0.shape[0]))
     accept = np.zeros(nsteps, dtype=bool)
@@ -169,24 +164,25 @@ def sample(q0, nsteps, prng_key, dt=1e-1, max_newton_steps=10, tol=1e-9):
         qstep, accept, h_arr, prng_key, i = carry
         prng_key, subkey = jax.random.split(prng_key)
         pstep = propose_p(qstep, subkey)
-        h_arr = h_arr.at[i].set(H1(qstep, pstep, np.zeros(C.shape[0])))
+        h_arr = h_arr.at[i].set(hamiltonian(qstep, pstep, np.zeros(C.shape[0]), kinetic, potential, constraint))
 
-        propose_half1 = step1(qstep, pstep, dt)
+        propose_half1, _, _ = rattle_step1(qstep, pstep, dt, kinetic, potential, constraint)
 
-        q1_propose = propose_half1[0][:qstep.shape[0]]
-        l1_propose = propose_half1[0][qstep.shape[0]:]
+        q1_propose = propose_half1[:qstep.shape[0]]
+        l1_propose = propose_half1[qstep.shape[0]:]
         xstep_0_5 = np.concatenate([pstep, np.zeros(C.shape[0])])
 
-        propose_half2 = step2(q1_propose, pstep, l1_propose, dt)
+        propose_half2 = rattle_step2(q1_propose, pstep, l1_propose, dt, kinetic, potential, constraint)
 
-        p1_propose = propose_half2[0][:pstep.shape[0]]
-        m1_propose = propose_half2[0][pstep.shape[0]:]
+        p1_propose = propose_half2[:pstep.shape[0]]
+        m1_propose = propose_half2[pstep.shape[0]:]
 
         prng_key, subkey = jax.random.split(prng_key)
 
-        MH = H1(q1_propose, p1_propose, m1_propose) - H1(qstep, pstep, np.zeros(C.shape[0])) < -np.log(jax.random.uniform(subkey))
-        accept = accept.at[i].set(MH)
-        qstep = np.where(MH, q1_propose, qstep)
+        metropolis_hastings = hamiltonian(q1_propose, p1_propose, m1_propose, kinetic, potential, constraint)\
+                            - hamiltonian(qstep, pstep, np.zeros(C.shape[0]), kinetic, potential, constraint) < -np.log(jax.random.uniform(subkey))
+        accept = accept.at[i].set(metropolis_hastings)
+        qstep = np.where(metropolis_hastings, q1_propose, qstep)
         
         return (qstep, accept, h_arr, prng_key, i + 1), qstep
     
