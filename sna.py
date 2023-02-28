@@ -89,9 +89,9 @@ def kinetic(p, Minv=None):
     else:
         return p@Minv@p / 2
     
-@partial(jax.jit, static_argnums=(3, 4, 5))
-def hamiltonian(q, p, l, kinetic, potential, constraint):
-    return kinetic(p) + potential(q) + l@constraint(q)
+@partial(jax.jit, static_argnums=(4, 5))
+def hamiltonian(q, p, l, inverse_mass, potential, constraint):
+    return p@inverse_mass@p / 2 + potential(q) + l@constraint(q)
     
 @jax.jit
 def propose_p(q, prng_subkey):
@@ -111,49 +111,142 @@ def propose_p(q, prng_subkey):
 
 # jac_half2 = jax.jit(jax.jacfwd(half2, argnums=0))
 
-@partial(jax.jit, static_argnums=(3, 4, 5, 6, 7))
-def rattle_step1(q0, p0, dt, kinetic, potential, constraint, max_newton_iter=10, tol=1e-9):
+#@partial(jax.jit, static_argnums=(5, 6, 7, 8))
+#def rattle_step1(q0, p0, l0, dt, inverse_mass, potential, constraint, max_newton_iter=10, tol=1e-9):
+#    
+#    def half1(par, q0, p0, dt):
+#        jac_cons = jax.jacfwd(cons, argnums=0)
+#        q1 = par[:q0.shape[0]]
+#        l = par[q0.shape[0]:]
+#        p0_5 = p0 - (dt / 2) * (jax.grad(hamiltonian, argnums=0)(q0, p0, l, inverse_mass, potential, constraint) + l@jac_cons(q0))
+#        return np.concatenate([q0 - q1 + (dt / 2) * (jax.grad(hamiltonian, argnums=1)(q0, p0_5, l, inverse_mass, potential, constraint)\
+#                                + jax.grad(hamiltonian, argnums=1)(q1, p0_5, l, inverse_mass, potential, constraint)),
+#                               constraint(q1)])
+#    
+#    jac_half1 = jax.jacfwd(half1, argnums=0)
+#    
+#    def cond(par):    
+#        x, step, err = par
+#        return (step < max_newton_iter) & (err > tol)
+#
+#    def body(par):
+#        x, step, err = par
+#        x = x + np.linalg.solve(jac_half1(x, q0, p0, dt), -half1(x, q0, p0, dt))
+#        return x, step + 1, np.linalg.norm(half1(x, q0, p0, dt))
+#
+#    x0 = np.concatenate([q0, l0])
+#    return jax.lax.while_loop(cond, body, (x0, 0, np.linalg.norm(half1(x0, q0, p0, dt))))
+#
+#@partial(jax.jit, static_argnums=(5, 6))
+#def rattle_step2(q1, p0, l, dt, inverse_mass, potential, constraint):
+#    
+#    jac_cons = jax.jacfwd(cons, argnums=0)
+#    jac_C = jac_cons(q1)
+#
+#    A = np.zeros((p0.size + l.size, p0.size + l.size))
+#    A = A.at[:p0.size, :p0.size].set(np.identity(p0.size))
+#    A = A.at[:p0.size, p0.size:p0.size + l.size].set((dt / 2) * jac_C.T)
+#    A = A.at[p0.size:p0.size + l.size, :p0.size].set(jac_C)
+#
+#    b = np.zeros(p0.size + l.size)
+#    b = b.at[:p0.size].set(p0 - (dt / 2) * jax.grad(H, argnums=0)(q1, p0, l, inverse_mass, potential, constraint))
+#    
+#    return np.linalg.solve(A, b)
+
+@jax.jit
+def cotangency_lhs(jac_constraint, inverse_mass):
+    A = np.zeros((jac_constraint.shape[0] + jac_constraint.shape[1], jac_constraint.shape[0] + jac_constraint.shape[1]))
+    A = A.at[:jac_constraint.shape[1], :jac_constraint.shape[1]].set(np.identity(jac_constraint.shape[1]))
+    A = A.at[:jac_constraint.shape[1], jac_constraint.shape[1]:].set(-jac_constraint.T)
+    A = A.at[jac_constraint.shape[1]:, :jac_constraint.shape[1]].set(jac_constraint@inverse_mass)
+    return A
+
+@partial(jax.jit, static_argnums=(4, 5))
+def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None):
+
+    if inverse_mass is None:
+        inverse_mass = np.identity(momentum.shape)
+
+    jac_constraint = jax.jacfwd(constraint)(position)
+
+    A = cotangency_lhs(jac_constraint, inverse_mass)
+    b = np.pad(momentum - (dt / 2) * jax.grad(potential)(position), (0, jac_constraint.shape[0]))
+    x = np.linalg.solve(A, b)
+
+    momentum_new = x[:momentum.size]
+    lagrange_multiplier_new = x[momentum.size:]
+
+    return position, momentum_new, lagrange_multiplier_new
+
+@partial(jax.jit, static_argnums=(4, 5, 7, 8))
+def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, max_newton_iter=10, tol=1e-9):
     
-    def half1(par, q0, p0, dt):
-        jac_cons = jax.jacfwd(cons, argnums=0)
-        q1 = par[:q0.shape[0]]
-        l = par[q0.shape[0]:]
-        p0_5 = p0 - (dt / 2) * (jax.grad(hamiltonian, argnums=0)(q0, p0, l) + l@jac_cons(q0))
-        return np.concatenate([q0 - q1 + (dt / 2) * (jax.grad(hamiltonian, argnums=1)(q0, p0_5, np.zeros_like(l)) + jax.grad(hamiltonian, argnums=1)(q1, p0_5, np.zeros_like(l))),
-                               constraint(q1)])
-    
-    jac_half1 = jax.jacfwd(half1, argnums=0)
-    
-    def cond(par):    
-        x, step, err = par
+    if inverse_mass is None:
+        inverse_mass = np.identity(momentum.shape)
+
+    def drift_residual(x):
+        
+        position_new = x[:position.size]
+        lagrange_multiplier_new = x[position.size:]
+        jac_constraint = jax.jacfwd(constraint)(position_new)
+        momentum_new = momentum + lagrange_multiplier_new@jac_constraint
+        return np.concatenate([position_new - (position + dt * inverse_mass@momentum_new), constraint(position)])
+
+    def cond(carry):
+        x, step, resid = carry
+        err = np.linalg.norm(resid)
         return (step < max_newton_iter) & (err > tol)
 
-    def body(par):
-        x, step, err = par
-        x = x + np.linalg.solve(jac_half1(x, q0, p0, dt), -half1(x, q0, p0, dt))
-        return x, step + 1, np.linalg.norm(half1(x, q0, p0, dt))
+    def loop_body(carry):
+        x, step, resid = carry
+        dx = np.linalg.solve(jax.jacfwd(drift_residual)(x), -resid)
+        return x + dx, step + 1, drift_residual(x)
 
-    x0 = np.concatenate([q0, np.zeros(C.shape[0])])
-    return jax.lax.while_loop(cond, body, (x0, 0, np.linalg.norm(half1(x0, q0, p0, dt))))
+    x = np.concatenate([position, lagrange_multiplier])
+    init = (x, 0, drift_residual(x))
+    x, n_steps, resid = jax.lax.while_loop(cond, loop_body, init)
+    jac_constraint = jax.jacfwd(constraint)(position_new)
 
-@partial(jax.jit, static_argnums=(4, 5, 6))
-def rattle_step2(q1, p0, l, dt, kinetic, potential, constraint):
+    position_new = x[:position.size]
+    momentum_new = momentum + lagrange_multiplier_new@jac_constraint
+    lagrange_multiplier_new = x[position.size:]
+
+    A = cotangency_lhs(jac_constraint, inverse_mass)
+    b = np.pad(momentum_new, (0, jac_constraint.shape[0]))
+    x = np.linalg.solve(A, b)
+
+    momentum_new = x[:momentum.size]
+
+    return position_new, momentum_new, lagrange_multiplier_new, cond((x, n_steps, resid))
+
+@partial(jax.jit, static_argnums=(5, 6))
+def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, inverse_mass=None, temperature=1):
     
-    jac_cons = jax.jacfwd(cons, argnums=0)
-    C = jac_cons(q1)
+    if inverse_mass is None:
+        inverse_mass = np.identity(momentum.shape)
 
-    A = np.zeros((p0.size + l.size, p0.size + l.size))
-    A = A.at[:p0.size, :p0.size].set(np.identity(p0.size))
-    A = A.at[:p0.size, p0.size:p0.size + l.size].set((dt / 2) * C.T)
-    A = A.at[p0.size:p0.size + l.size, :p0.size].set(C)
+    drag = np.exp(-friction * dt)
+    noise_scale = np.sqrt(temperature * (1 - a**2))
 
-    b = np.zeros(p0.size + l.size)
-    b = b.at[:p0.size].set(p0 - (dt / 2) * jax.grad(H, argnums=0)(q1, p0, l))
+    jac_constraint = jax.jacfwd(constraint)(position_new)
     
-    return np.linalg.solve(A, b)
-	
-@partial(jax.jit, static_argnums=(1, 4, 5, 6, 7, 8))
-def sample(q0, nsteps, prng_key, dt, kinetic, potential, constraint, max_newton_steps=10, tol=1e-9):
+    A = cotangency_lhs(jac_constraint, inverse_mass)
+    
+    key, subkey = jax.random.split(prng_key)
+    W = jax.random.normal(key, momentum.shape)
+    L = np.linalg.cholesky(inverse_mass)
+    W = noise_scale * jax.scipy.linalg.solve_triangular(L, W, lower=True)
+
+    b = np.pad(drag * momentum + W, (0, jac_constraint.shape[0]))
+    x = np.linalg.solve(A, b)
+
+    momentum_new = x[:momentum.size]
+    lagrange_multiplier_new = x[momentum.size:]
+
+    return position, momentum_new, lagrange_multiplier_new
+
+@partial(jax.jit, static_argnums=(1, 5, 6, 7, 8))
+def sample(q0, nsteps, prng_key, dt, inverse_mass, potential, constraint, max_newton_iter=10, tol=1e-9):
 
     traj = np.empty((nsteps, q0.shape[0]))
     accept = np.zeros(nsteps, dtype=bool)
@@ -161,30 +254,30 @@ def sample(q0, nsteps, prng_key, dt, kinetic, potential, constraint, max_newton_
 
     def body(carry, _):
 
-        qstep, accept, h_arr, prng_key, i = carry
+        qstep, lstep, accept, h_arr, prng_key, i = carry
         prng_key, subkey = jax.random.split(prng_key)
         pstep = propose_p(qstep, subkey)
-        h_arr = h_arr.at[i].set(hamiltonian(qstep, pstep, np.zeros(C.shape[0]), kinetic, potential, constraint))
+        h_arr = h_arr.at[i].set(hamiltonian(qstep, pstep, np.zeros(C.shape[0]), inverse_mass, potential, constraint))
 
-        propose_half1, _, _ = rattle_step1(qstep, pstep, dt, kinetic, potential, constraint)
+        propose_half1, _, _ = rattle_step1(qstep, lstep, pstep, dt, inverse_mass, potential, constraint)
 
         q1_propose = propose_half1[:qstep.shape[0]]
         l1_propose = propose_half1[qstep.shape[0]:]
         xstep_0_5 = np.concatenate([pstep, np.zeros(C.shape[0])])
 
-        propose_half2 = rattle_step2(q1_propose, pstep, l1_propose, dt, kinetic, potential, constraint)
+        propose_half2 = rattle_step2(q1_propose, pstep, l1_propose, dt, inverse_mass, potential, constraint)
 
         p1_propose = propose_half2[:pstep.shape[0]]
         m1_propose = propose_half2[pstep.shape[0]:]
 
         prng_key, subkey = jax.random.split(prng_key)
 
-        metropolis_hastings = hamiltonian(q1_propose, p1_propose, m1_propose, kinetic, potential, constraint)\
-                            - hamiltonian(qstep, pstep, np.zeros(C.shape[0]), kinetic, potential, constraint) < -np.log(jax.random.uniform(subkey))
+        metropolis_hastings = hamiltonian(q1_propose, p1_propose, m1_propose, inverse_mass, potential, constraint)\
+                            - hamiltonian(qstep, pstep, np.zeros(C.shape[0]), inverse_mass, potential, constraint) < -np.log(jax.random.uniform(subkey))
         accept = accept.at[i].set(metropolis_hastings)
         qstep = np.where(metropolis_hastings, q1_propose, qstep)
         
-        return (qstep, accept, h_arr, prng_key, i + 1), qstep
+        return (qstep, lstep, accept, h_arr, prng_key, i + 1), qstep
     
-    init = (q0, accept, h_arr, prng_key, 0)
+    init = (q0, np.zeros(), accept, h_arr, prng_key, 0)
     return jax.lax.scan(body, init, None, length=nsteps)
