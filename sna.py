@@ -3,6 +3,7 @@ import jax.numpy as np
 import numpy
 import time
 import os
+import nonlinear_solver
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
@@ -161,16 +162,16 @@ def cotangency_lhs(jac_constraint, inverse_mass):
     A = A.at[jac_constraint.shape[1]:, :jac_constraint.shape[1]].set(jac_constraint@inverse_mass)
     return A
 
-@partial(jax.jit, static_argnums=(4, 5))
+@partial(jax.jit, static_argnums=(3, 4))
 def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None):
 
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.shape)
+        inverse_mass = np.identity(momentum.size)
 
     jac_constraint = jax.jacfwd(constraint)(position)
 
     A = cotangency_lhs(jac_constraint, inverse_mass)
-    b = np.pad(momentum - (dt / 2) * jax.grad(potential)(position), (0, jac_constraint.shape[0]))
+    b = np.pad(momentum - dt * jax.grad(potential)(position), (0, jac_constraint.shape[0]))
     x = np.linalg.solve(A, b)
 
     momentum_new = x[:momentum.size]
@@ -179,10 +180,10 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
     return position, momentum_new, lagrange_multiplier_new
 
 @partial(jax.jit, static_argnums=(4, 5, 7, 8))
-def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, max_newton_iter=10, tol=1e-9):
+def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, max_newton_iter=20, tol=1e-9):
     
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.shape)
+        inverse_mass = np.identity(momentum.size)
 
     def drift_residual(x):
         
@@ -190,26 +191,15 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         lagrange_multiplier_new = x[position.size:]
         jac_constraint = jax.jacfwd(constraint)(position_new)
         momentum_new = momentum + lagrange_multiplier_new@jac_constraint
-        return np.concatenate([position_new - (position + dt * inverse_mass@momentum_new), constraint(position)])
-
-    def cond(carry):
-        x, step, resid = carry
-        err = np.linalg.norm(resid)
-        return (step < max_newton_iter) & (err > tol)
-
-    def loop_body(carry):
-        x, step, resid = carry
-        dx = np.linalg.solve(jax.jacfwd(drift_residual)(x), -resid)
-        return x + dx, step + 1, drift_residual(x)
+        return np.concatenate([position_new - (position + dt * inverse_mass@momentum_new), constraint(position_new)])
 
     x = np.concatenate([position, lagrange_multiplier])
-    init = (x, 0, drift_residual(x))
-    x, n_steps, resid = jax.lax.while_loop(cond, loop_body, init)
-    jac_constraint = jax.jacfwd(constraint)(position_new)
+    x, success = nonlinear_solver.newton(x, drift_residual, max_iter=max_newton_iter)
 
     position_new = x[:position.size]
-    momentum_new = momentum + lagrange_multiplier_new@jac_constraint
     lagrange_multiplier_new = x[position.size:]
+    jac_constraint = jax.jacfwd(constraint)(position_new)
+    momentum_new = momentum + lagrange_multiplier_new@jac_constraint
 
     A = cotangency_lhs(jac_constraint, inverse_mass)
     b = np.pad(momentum_new, (0, jac_constraint.shape[0]))
@@ -217,13 +207,13 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 
     momentum_new = x[:momentum.size]
 
-    return position_new, momentum_new, lagrange_multiplier_new, cond((x, n_steps, resid))
+    return position_new, momentum_new, lagrange_multiplier_new, success
 
 @partial(jax.jit, static_argnums=(5, 6))
 def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, inverse_mass=None, temperature=1):
     
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.shape)
+        inverse_mass = np.identity(momentum.size)
 
     drag = np.exp(-friction * dt)
     noise_scale = np.sqrt(temperature * (1 - a**2))
