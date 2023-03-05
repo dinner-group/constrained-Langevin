@@ -216,7 +216,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         inverse_mass = np.identity(momentum.size)
 
     drag = np.exp(-friction * dt)
-    noise_scale = np.sqrt(temperature * (1 - a**2))
+    noise_scale = np.sqrt(temperature * (1 - drag**2))
 
     jac_constraint = jax.jacfwd(constraint)(position_new)
     
