@@ -233,7 +233,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
     momentum_new = x[:momentum.size]
     lagrange_multiplier_new = x[momentum.size:]
 
-    return position, momentum_new, lagrange_multiplier_new
+    return position, momentum_new, lagrange_multiplier_new, key
 
 @partial(jax.jit, static_argnums=(1, 5, 6, 7, 8))
 def sample(q0, nsteps, prng_key, dt, inverse_mass, potential, constraint, max_newton_iter=10, tol=1e-9):
