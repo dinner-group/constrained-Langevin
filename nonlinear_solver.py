@@ -24,7 +24,7 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9):
     return x, np.linalg.norm(dx) < tol
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4, 5))
-def affine_covariant_newton(x, resid, jac=None, max_iter=20, min_damping_factor=1e-2, tol=1e-9):
+def affine_covariant_newton(x, resid, jac=None, max_iter=100, min_damping_factor=1e-5, tol=1e-9):
     
     if jac is None:
         jac = jax.jacfwd(resid)
@@ -67,4 +67,4 @@ def affine_covariant_newton(x, resid, jac=None, max_iter=20, min_damping_factor=
     init = (x, x, 0, 1., 1., 0., dx_init, dx_init, dx_init, jac_lu)
     x, x_guess, step, damping_factor, contraction_factor, trust_factor, dx_prev, dx_init, error, jac_lu = jax.lax.while_loop(cond_outer, loop_outer, init)
     
-    return x, step, np.linalg.norm(dx_init) < tol
+    return x, np.linalg.norm(dx_init) < tol
