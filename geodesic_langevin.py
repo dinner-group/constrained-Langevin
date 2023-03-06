@@ -121,6 +121,6 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         return (i + 1, position, momentum, lagrange_multiplier, energy, force, out, success, prng_key)
 
     init = (0, position, momentum, lagrange_multiplier, energy, force, out, True, prng_key)
-    i, position, momentum, lagrange_multiplier, energy, force, out, succes, prng_key = jax.lax.while_loop(cond, loop_body, init)
+    i, position, momentum, lagrange_multiplier, energy, force, out, success, prng_key = jax.lax.while_loop(cond, loop_body, init)
     
     return out, prng_key
