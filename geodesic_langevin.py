@@ -117,10 +117,10 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         position, momentum, _, energy, force = rattle_kick(position, momentum, dt / 2, potential, constraint, inverse_mass)
         
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
-        out = jax.lax.dynamic_update_slice(out, out_step, (i // thin))
+        out = jax.lax.dynamic_update_slice(out, np.array([out_step]), (i // thin, 0))
         return (i + 1, position, momentum, lagrange_multiplier, energy, force, out, success, prng_key)
 
     init = (0, position, momentum, lagrange_multiplier, energy, force, out, True, prng_key)
-    i, position, momentum, lagrange_multiplier, energy, force, out, succes, prng_key = sjax.lax.while_loop(cond, loop_body, init)
+    i, position, momentum, lagrange_multiplier, energy, force, out, succes, prng_key = jax.lax.while_loop(cond, loop_body, init)
     
     return out, prng_key
