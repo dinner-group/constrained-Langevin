@@ -11,8 +11,7 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9):
     
     def cond(carry):
         x, step, dx = carry
-        err = np.linalg.norm(dx)
-        return (step < max_iter) & (err > tol)
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
     
     def loop_body(carry):
         x, step, dx = carry
@@ -21,7 +20,7 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9):
     
     init = (x, 0, np.full_like(x, np.inf))
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
-    return x, np.linalg.norm(dx) < tol
+    return x, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4, 5))
 def affine_covariant_newton(x, resid, jac=None, max_iter=100, min_damping_factor=1e-5, tol=1e-9):
