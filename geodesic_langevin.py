@@ -50,7 +50,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         return np.concatenate([position_new - (position + dt * inverse_mass@momentum_new), constraint(position_new)])
 
     x = np.concatenate([position, lagrange_multiplier])
-    x, success = nonlinear_solver.newton(x, drift_residual, max_iter=max_newton_iter)
+    x, success = nonlinear_solver.newton(x, drift_residual, max_iter=max_newton_iter, tol=tol)
 
     position_new = x[:position.size]
     lagrange_multiplier_new = x[position.size:]
