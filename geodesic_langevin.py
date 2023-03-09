@@ -72,11 +72,12 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
     if inverse_mass is None:
         inverse_mass = np.identity(momentum.size)
 
+    if jac_constraint is None:
+        jac_constraint = jax.jacfwd(constraint)(position)
+
     drag = np.exp(-friction * dt)
     noise_scale = np.sqrt(temperature * (1 - drag**2))
 
-    jac_constraint = jax.jacfwd(constraint)(position)
-    
     A = cotangency_lhs(jac_constraint, inverse_mass)
     
     key, subkey = jax.random.split(prng_key)
