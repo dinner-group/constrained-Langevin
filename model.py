@@ -449,6 +449,90 @@ class Morris_Lecar:
     def _tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
 
+class Pharyngeal_Minimal_Syn:
+
+    n_dim = 17
+    n_par = 11
+
+    def __init__(self, par):
+        self.par = par
+
+    @jax.jit
+    def f_ml(t, y, I_ext, par=None):
+
+        if par is None:
+            par = np.array([1.09904602, -59.89994441, 10.4794212, -85.0844258, 5.01470893, 119.74929162, 0.84451993, -40.54086205, 15.0745312, 20.6567183, -4.93460016,
+                            2.15771697, 28.92346791, 60.30244485, 0.34838615, -2.66648746, 17.21018044, 36.5930777 ])
+
+        dy = np.zeros_like(y)
+        dy = dy.at[0].set((I_ext - par[0] * (y[0] - par[1]) - par[2] * y[1] * (y[0] - par[3]) - par[4] * y[2] * (y[0] - par[5]) - par[6] / np.cosh((y[0] - par[7]) / par[8])**2 * (y[0] - par[5])) / par[9])
+        dy = dy.at[1].set(np.exp(par[10]) * ((1 + np.tanh((y[0] - par[11]) / par[12])) / 2 - y[1]) * np.cosh((y[0] - par[11]) / par[13]))
+        dy = dy.at[2].set(np.exp(par[14]) * ((1 + np.tanh((y[0] - par[15]) / par[16])) / 2 - y[2]) * np.cosh((y[0] - par[15]) / par[17]))
+        return dy
+
+    @jax.jit
+    def f_hh(t, y, I_ext, par=None):
+
+        if par is None:
+            par = np.array([3.6e1, 1e1, 1e-2, 1e-1, 1.25e-1, 8e1, 1.2e2, 2.5e1, 1e-1, 1e-1, 4e0, 1.8e1, 3e-1, 7e-2, 2e1, 1e-1, 3e1])
+
+        def alpha(v, v_mid, rate, scale):
+            return rate * (v_mid - v) / (np.exp(scale * (v_mid - v)) - 1.0)
+                    
+        def beta(v, rate, scale):
+            return rate * np.exp(- v / scale)
+                                    
+        dy = np.zeros_like(y)
+        dy = dy.at[0].set(I_ext - par[0] * y[1]**4 * (y[0] + 12) - par[6] * y[2]**3 * y[3] * (y[0] - 115) - par[12] * (y[0] - 10.613))
+        dy = dy.at[1].set(alpha(y[0], *par[1:4]) * (1 - y[1]) - beta(y[0], *par[4:6]) * y[1])
+        dy = dy.at[2].set(alpha(y[0], *par[7:10]) * (1 - y[2]) - beta(y[0], *par[10:12]) * y[2])
+        dy = dy.at[3].set(beta(y[0], *par[13:15]) * (1 - y[3]) - (1 / (np.exp(par[15] * (par[16] - y[0])) + 1.0)) * y[3])
+        return dy
+
+    @jax.jit
+    def f_syn(t, y, v, vmid, tau1, tau2):
+
+        dy = np.zeros(2)
+        dy = dy.at[0].set((1 + np.tanh(v - vmid)) / 2 - y[0] / np.exp(tau1))
+        dy = dy.at[1].set(y[0] - y[1] / np.exp(tau2))
+        return dy
+
+    @jax.jit
+    def f(self, t, y, par=None):
+
+        if par is None:
+            par = self.par
+        
+        I_ext = par[0]
+        par = par[1:]
+
+        dy = np.zeros_like(y)
+        dy = dy.at[:3].set(Pharyngeal_Minimal_Syn.f_ml(t, y[:3], par[9] * (y[7] - y[0]) / 60 - par[0] * y[4] * (y[0] + 80) - par[3] * y[6] * (y[0] - 30)))
+        dy = dy.at[3:5].set(Pharyngeal_Minimal_Syn.f_syn(t, y[3:5], y[7], 50., *par[1:3]))
+        dy = dy.at[5:7].set(Pharyngeal_Minimal_Syn.f_syn(t, y[5:7], y[11], 50., *par[4:6]))
+        dy = dy.at[7:11].set(Pharyngeal_Minimal_Syn.f_hh(t, y[7:11], par[9] * (y[0] - y[7])))
+        dy = dy.at[11:15].set(Pharyngeal_Minimal_Syn.f_hh(t, y[11:15], I_ext - par[6] * y[16] * (y[11] + 10)))
+        dy = dy.at[15:17].set(Pharyngeal_Minimal_Syn.f_syn(t, y[15:17], y[7], 50., *par[7:9]))
+        return dy
+
+    @jax.jit
+    def jac(self, t, y, par=None):
+
+        if par is None:
+            par = self.par
+
+        return jax.jacfwd(self.f, argnums=1)(t, y, par)
+
+    def _tree_flatten(self):
+        children = (self.par,)
+        aux_data = {}
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
 jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
+jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
