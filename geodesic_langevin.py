@@ -3,6 +3,7 @@ import jax.numpy as np
 import numpy
 import nonlinear_solver
 from functools import partial
+jax.config.update("jax_enable_x64", True)
 
 @jax.jit
 def cotangency_lhs(jac_constraint, inverse_mass):
