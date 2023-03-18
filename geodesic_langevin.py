@@ -43,11 +43,12 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     if inverse_mass is None:
         inverse_mass = np.identity(momentum.size)
 
+    jac_constraint_vjp = jax.vjp(constraint, position)
+
     def drift_residual(x):
         
         position_new = x[:position.size]
         lagrange_multiplier_new = x[position.size:]
-        jac_constraint_vjp = jax.vjp(constraint, position_new)
         momentum_new = momentum + jac_constraint_vjp[1](lagrange_multiplier_new)[0]
         return np.concatenate([position_new - (position + dt * inverse_mass@momentum_new), constraint(position_new)])
 
@@ -57,7 +58,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     position_new = x[:position.size]
     lagrange_multiplier_new = x[position.size:]
     jac_constraint = jax.jacfwd(constraint)(position_new)
-    momentum_new = momentum + lagrange_multiplier_new@jac_constraint
+    momentum_new = momentum + jac_constraint_vjp[1](lagrange_multiplier_new)[0]
 
     A = cotangency_lhs(jac_constraint, inverse_mass)
     b = np.pad(momentum_new, (0, jac_constraint.shape[0]))
