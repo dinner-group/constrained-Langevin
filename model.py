@@ -511,7 +511,7 @@ class Pharyngeal_Minimal_Syn:
         dy = dy.at[3:5].set(Pharyngeal_Minimal_Syn.f_syn(t, y[3:5], y[7], 50., *par[1:3]))
         dy = dy.at[5:7].set(Pharyngeal_Minimal_Syn.f_syn(t, y[5:7], y[11], 50., *par[4:6]))
         dy = dy.at[7:11].set(Pharyngeal_Minimal_Syn.f_hh(t, y[7:11], par[9] * (y[0] - y[7])))
-        dy = dy.at[11:15].set(Pharyngeal_Minimal_Syn.f_hh(t, y[11:15], I_ext - par[6] * y[16] * (y[11] + 10)))
+        dy = dy.at[11:15].set(Pharyngeal_Minimal_Syn.f_hh(t, y[11:15], I_ext - par[6] * y[16] * (y[11] + 80)))
         dy = dy.at[15:17].set(Pharyngeal_Minimal_Syn.f_syn(t, y[15:17], y[7], 50., *par[7:9]))
         return dy
 
