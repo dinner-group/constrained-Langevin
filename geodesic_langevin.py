@@ -59,7 +59,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     position_new = x[:position.size]
     lagrange_multiplier_new = x[position.size:]
     jac_constraint = jax.jacfwd(constraint)(position_new)
-    momentum_new = momentum + jac_constraint_vjp[1](lagrange_multiplier_new)[0]
+    momentum_new = momentum + lagrange_multiplier_new@jac_constraint
 
     A = cotangency_lhs(jac_constraint, inverse_mass)
     cotangency_lhs_lu = jax.scipy.linalg.lu_factor(A)
