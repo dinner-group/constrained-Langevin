@@ -41,25 +41,14 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     if inverse_mass is None:
         inverse_mass = np.identity(momentum.size)
 
-    jac_constraint_vjp = jax.vjp(constraint, position)
-
-    def drift_residual(x):
-        
-        position_new = x[:position.size]
-        lagrange_multiplier_new = x[position.size:]
-        momentum_new = momentum + jac_constraint_vjp[1](lagrange_multiplier_new)[0]
-        return np.concatenate([position_new - (position + dt * inverse_mass@momentum_new), constraint(position_new)])
-
-    x = np.concatenate([position, lagrange_multiplier])
-    x, success = nonlinear_solver.newton(x, drift_residual, max_iter=max_newton_iter, tol=tol)
-
-    position_new = x[:position.size]
-    lagrange_multiplier_new = x[position.size:]
+    position_new = position + dt * inverse_mass@momentum
+    position_new, success = nonlinear_solver.gauss_newton(position_new, constraint)
     jac_constraint = jax.jacfwd(constraint)(position_new)
-    momentum_new = momentum + lagrange_multiplier_new@jac_constraint
+    momentum_new = (position_new - position) / dt
 
     jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T, mode="economic")
-    momentum_new = momentum_new - jac_constraint_qr[0]@(jac_constraint_qr[0].T@momentum_new)
+    lagrange_multiplier_new = jac_constraint_qr[0].T@momentum_new
+    momentum_new = momentum_new - jac_constraint_qr[0]@lagrange_multiplier_new
 
     return position_new, momentum_new, lagrange_multiplier_new, jac_constraint_qr, success
 

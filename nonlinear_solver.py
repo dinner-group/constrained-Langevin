@@ -36,9 +36,7 @@ def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9):
         x, step, dx = carry
         J = jac(x)
         Q, R = jax.scipy.linalg.qr(J.T, mode="economic")
-        dx = jax.scipy.linalg.solve_triangular(R, -resid(x), lower=False)
-        dx = jax.scipy.linalg.solve_triangular(R.T, dx, lower=True)
-        dx = J.T@dx
+        dx = J.T@jax.scipy.linalg.cho_solve((R, False), -resid(x))
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
