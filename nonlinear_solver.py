@@ -22,7 +22,7 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9, *args):
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol)
 
-@partial(jax.jit, static_argnums(1, 2, 3, 4))
+@partial(jax.jit, static_argnums=(1, 2, 3, 4))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9):
 
     if jac is None:
