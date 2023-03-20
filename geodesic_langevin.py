@@ -27,7 +27,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
 
     if jac_constraint_qr is None:
         jac_constraint = jax.jacfwd(constraint)(position)
-        jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T, mode="economic")
+        jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T@inverse_mass, mode="economic")
 
     momentum_new = momentum - dt * force
     lagrange_multiplier_new = jac_constraint_qr[0].T@momentum_new
@@ -46,7 +46,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     jac_constraint = jax.jacfwd(constraint)(position_new)
     momentum_new = (position_new - position) / dt
 
-    jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T, mode="economic")
+    jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T@inverse_mass, mode="economic")
     lagrange_multiplier_new = jac_constraint_qr[0].T@momentum_new
     momentum_new = momentum_new - jac_constraint_qr[0]@lagrange_multiplier_new
 
@@ -60,7 +60,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
 
     if jac_constraint_qr is None:
         jac_constraint = jax.jacfwd(constraint)(position)
-        jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T, mode="economic")
+        jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T@inverse_mass, mode="economic")
 
     drag = np.exp(-friction * dt)
     noise_scale = np.sqrt(temperature * (1 - drag**2))
@@ -89,7 +89,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         inverse_mass = np.identity(momentum.size)
 
     jac_constraint = jax.jacfwd(constraint)(position)
-    jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T, mode="economic")
+    jac_constraint_qr = jax.scipy.linalg.qr(jac_constraint.T@inverse_mass, mode="economic")
 
     out = np.full((n_steps // thin, position.size + momentum.size + lagrange_multiplier.size + 1 + force.size), np.nan)
 
