@@ -43,7 +43,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         proj = cotangency_proj(jac_constraint, inverse_mass)
 
     position_new = position + dt * inverse_mass@momentum
-    position_new, success = nonlinear_solver.newton_rattle(position_new, constraint, proj[0])
+    position_new, success = nonlinear_solver.newton_rattle(position_new, constraint, proj[0]@inverse_mass)
     jac_constraint = jax.jacfwd(constraint)(position_new)
     momentum_new = (position_new - position) / dt
 
