@@ -32,14 +32,18 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, proj
 
-@partial(jax.jit, static_argnums=(4, 5, 7, 8))
-def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, max_newton_iter=20, tol=1e-9):
+@partial(jax.jit, static_argnums=(4, 5, 8, 9))
+def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, proj=None, max_newton_iter=20, tol=1e-9):
     
     if inverse_mass is None:
         inverse_mass = np.identity(momentum.size)
 
+    if proj is None:
+        jac_constraint = jax.jacfwd(constraint)(position)
+        proj = cotangency_proj(jac_constraint, inverse_mass)
+
     position_new = position + dt * inverse_mass@momentum
-    position_new, success = nonlinear_solver.gauss_newton(position_new, constraint)
+    position_new, success = nonlinear_solver.newton_rattle(position_new, constraint, proj[0])
     jac_constraint = jax.jacfwd(constraint)(position_new)
     momentum_new = (position_new - position) / dt
 
@@ -99,9 +103,9 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key = carry
 
         position, momentum, _, energy, force, proj,= rattle_kick(position, momentum, dt / 2, potential, constraint, inverse_mass, energy, force, proj)
-        position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, inverse_mass, max_newton_iter, tol)
+        position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, inverse_mass, proj, max_newton_iter, tol)
         position, momentum, _, prng_key = rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, inverse_mass, proj, temperature)
-        position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, inverse_mass, max_newton_iter, tol)
+        position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, inverse_mass, proj, max_newton_iter, tol)
         position, momentum, _, energy, force, proj = rattle_kick(position, momentum, dt / 2, potential, constraint, inverse_mass, proj=proj)
         
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])

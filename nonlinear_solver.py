@@ -22,6 +22,26 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9, *args):
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol)
 
+@partial(jax.jit, static_argnums=(1, 3, 4, 5))
+def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9):
+
+    if jac is None:
+        jac = jax.jacfwd(resid)
+
+    def cond(carry):
+        x, step, dx = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx = carry
+        J = jac(x)
+        dx = jac_prev.T@np.linalg.solve(J@jac_prev.T, -resid(x))
+        return x + dx, step + 1, dx
+
+    init = (x, 0, np.full_like(x, np.inf))
+    x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
+    return x, np.all(np.abs(dx) < tol)
+
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9):
 
