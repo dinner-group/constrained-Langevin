@@ -11,7 +11,7 @@ def cotangency_proj(jac_constraint, inverse_mass):
     if len(inverse_mass.shape) == 1:
         R = np.linalg.qr((np.sqrt(inverse_mass) * jac_constraint).T)
     else:
-        R = jax.scipy.linalg.cholesky(jac_constraint@inverse_mass@jac_constraint.T)
+        _, R = jax.scipy.linalg.cholesky(jac_constraint@inverse_mass@jac_constraint.T)
     return jac_constraint, R
 
 @partial(jax.jit, static_argnums=(3, 4))
