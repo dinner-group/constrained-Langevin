@@ -9,7 +9,9 @@ jax.config.update("jax_enable_x64", True)
 @jax.jit
 def cotangency_proj(jac_constraint, inverse_mass):
 
-    if len(inverse_mass.shape) == 1:
+    if inverse_mass is None:
+        _, R = np.linalg.qr(jac_constraint.T)
+    elif len(inverse_mass.shape) == 1:
         _, R = np.linalg.qr((np.sqrt(inverse_mass) * jac_constraint).T)
     else:
         R = jax.scipy.linalg.cholesky(jac_constraint@inverse_mass@jac_constraint.T)
@@ -19,7 +21,9 @@ def cotangency_proj(jac_constraint, inverse_mass):
 @jax.jit
 def velocity(momentum, inverse_mass):
 
-    if len(inverse_mass.shape) == 1:
+    if inverse_mass is None:
+        v = momentum
+    elif len(inverse_mass.shape) == 1:
         v = inverse_mass * momentum
     else:
         v = inverse_mass@momentum
@@ -28,9 +32,6 @@ def velocity(momentum, inverse_mass):
 
 @partial(jax.jit, static_argnums=(3, 4))
 def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None, energy=None, force=None, proj=None):
-
-    if inverse_mass is None:
-        inverse_mass = np.ones(momentum.size)
 
     if energy is None:
         energy = potential(position)
@@ -51,14 +52,13 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
 @partial(jax.jit, static_argnums=(4, 5, 8, 9, 10))
 def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, proj=None, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, tol=1e-9):
     
-    if inverse_mass is None:
-        inverse_mass = np.ones(momentum.size)
-
     if proj is None:
         jac_constraint = jax.jacfwd(constraint)(position)
         proj = cotangency_proj(jac_constraint, inverse_mass)
 
-    if len(inverse_mass.shape) == 1:
+    if inverse_mass is None:
+        jac_prevM = proj[0]
+    elif len(inverse_mass.shape) == 1:
         jac_prevM = proj[0] * inverse_mass
     else:
         jac_prevM = proj[0]@inverse_mass
@@ -77,9 +77,6 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 @partial(jax.jit, static_argnums=(5, 6))
 def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, inverse_mass=None, proj=None, temperature=1):
     
-    if inverse_mass is None:
-        inverse_mass = np.ones(momentum.size)
-
     if proj is None:
         jac_constraint = jax.jacfwd(constraint)(position)
         proj = cotangency_proj(jac_constraint, inverse_mass)
@@ -90,7 +87,9 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
     key, subkey = jax.random.split(prng_key)
     W = jax.random.normal(key, momentum.shape)
 
-    if len(inverse_mass.shape) == 1:
+    if inverse_mass is None:
+        W = noise_scale * W
+    elif len(inverse_mass.shape) == 1:
         W = noise_scale * W / np.sqrt(inverse_mass)
     else:
         R = jax.scipy.linalg.cholesky(inverse_mass)
@@ -110,9 +109,6 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
 
     if force is None:
         force = jax.grad(potential)(position)
-
-    if inverse_mass is None:
-        inverse_mass = np.ones(momentum.size)
 
     jac_constraint = jax.jacfwd(constraint)(position)
     proj = cotangency_proj(jac_constraint, inverse_mass)
