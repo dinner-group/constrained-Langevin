@@ -2,6 +2,7 @@ import jax
 import jax.numpy as np
 import numpy
 import nonlinear_solver
+import util
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
@@ -21,7 +22,7 @@ def velocity(momentum, inverse_mass):
     if len(inverse_mass.shape) == 1:
         v = inverse_mass * momentum
     else:
-        v = velocity(momentum, inverse_mass)
+        v = inverse_mass@momentum
 
     return v
 
@@ -47,8 +48,8 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, proj
 
-@partial(jax.jit, static_argnums=(4, 5, 8, 9))
-def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, proj=None, max_newton_iter=20, tol=1e-9):
+@partial(jax.jit, static_argnums=(4, 5, 8, 9, 10))
+def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, proj=None, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, tol=1e-9):
     
     if inverse_mass is None:
         inverse_mass = np.ones(momentum.size)
@@ -63,7 +64,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         jac_prevM = proj[0]@inverse_mass
 
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, success = nonlinear_solver.newton_rattle(position_new, constraint, jac_prevM)
+    position_new, success = nlsol(position_new, constraint, jac_prevM)
     jac_constraint = jax.jacfwd(constraint)(position_new)
     momentum_new = (position_new - position) / dt
 
