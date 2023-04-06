@@ -15,6 +15,16 @@ def cotangency_proj(jac_constraint, inverse_mass):
 
     return jac_constraint, R
 
+@jax.jit
+def velocity(momentum, inverse_mass):
+
+    if len(inverse_mass.shape) == 1:
+        v = inverse_mass * momentum
+    else:
+        v = velocity(momentum, inverse_mass)
+
+    return v
+
 @partial(jax.jit, static_argnums=(3, 4))
 def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None, energy=None, force=None, proj=None):
 
@@ -32,7 +42,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
         proj = cotangency_proj(jac_constraint, inverse_mass)
 
     momentum_new = momentum - dt * force
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@inverse_mass@momentum_new)
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@velocity(momentum_new, inverse_mass))
     momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, proj
@@ -47,13 +57,18 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         jac_constraint = jax.jacfwd(constraint)(position)
         proj = cotangency_proj(jac_constraint, inverse_mass)
 
-    position_new = position + dt * inverse_mass@momentum
-    position_new, success = nonlinear_solver.newton_rattle(position_new, constraint, proj[0]@inverse_mass)
+    if len(inverse_mass.shape) == 1:
+        jac_prevM = proj[0] * inverse_mass
+    else:
+        jac_prevM = proj[0]@inverse_mass
+
+    position_new = position + dt * velocity(momentum, inverse_mass)
+    position_new, success = nonlinear_solver.newton_rattle(position_new, constraint, jac_prevM)
     jac_constraint = jax.jacfwd(constraint)(position_new)
     momentum_new = (position_new - position) / dt
 
     proj = cotangency_proj(jac_constraint, inverse_mass)
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@inverse_mass@momentum_new)
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@velocity(momentum_new, inverse_mass))
     momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
 
     return position_new, momentum_new, lagrange_multiplier_new, proj, success
@@ -73,11 +88,15 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
     
     key, subkey = jax.random.split(prng_key)
     W = jax.random.normal(key, momentum.shape)
-    R = jax.scipy.linalg.cholesky(inverse_mass)
-    W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
+
+    if len(inverse_mass.shape) == 1:
+        W = noise_scale * W / np.sqrt(inverse_mass)
+    else:
+        R = jax.scipy.linalg.cholesky(inverse_mass)
+        W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
 
     momentum_new = drag * momentum + W
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@inverse_mass@momentum_new)
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@velocity(momentum_new, inverse_mass))
     momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
 
     return position, momentum_new, lagrange_multiplier_new, key
