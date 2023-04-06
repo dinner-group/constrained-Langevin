@@ -8,7 +8,7 @@ jax.config.update("jax_enable_x64", True)
 @jax.jit
 def cotangency_proj(jac_constraint, inverse_mass):
 
-    if len(inverse_mass.shape == 1):
+    if len(inverse_mass.shape) == 1:
         R = np.linalg.qr((np.sqrt(inverse_mass) * jac_constraint).T)
     else:
         R = jax.scipy.linalg.cholesky(jac_constraint@inverse_mass@jac_constraint.T)
