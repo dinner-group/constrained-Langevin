@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as np
+import util
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
@@ -40,6 +41,26 @@ def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9):
 
     init = (x, 0, np.full_like(x, np.inf))
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
+    return x, np.all(np.abs(dx) < tol)
+
+@partial(jax.jit, static_argnums=(1, 3, 4, 5, 6, 7, 8))
+def newton_bvp_dense(x, resid, jac, jac_prev, n_dim, n_par, n_mesh_intervals, max_iter=20, tol=1e-9):
+
+    def cond(carry):
+        x, step, dx = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx = carry
+        J = jac(x)
+        dx1 = np.linalg.solve(bvp_jac_mul(J, jac_prev, n_dim, n_mesh_intervals))
+        Jy, Jk = J
+        dx = Jy@dx1[n_par:-1]
+        dx += Jk[:, :n_par]@dx1[:n_par]
+        dx += Jk[:, -1] * dx[-1]
+        return x + dx, step + 1, dx
+
+    init = (x, 0, np.full_like(x, np.inf))
     return x, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
