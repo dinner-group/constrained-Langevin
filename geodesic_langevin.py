@@ -7,14 +7,18 @@ jax.config.update("jax_enable_x64", True)
 
 @jax.jit
 def cotangency_proj(jac_constraint, inverse_mass):
-    R = jax.scipy.linalg.cholesky(jac_constraint@inverse_mass@jac_constraint.T)
+
+    if len(inverse_mass.shape == 1):
+        R = np.linalg.qr((np.sqrt(inverse_mass) * jac_constraint).T)
+    else:
+        R = jax.scipy.linalg.cholesky(jac_constraint@inverse_mass@jac_constraint.T)
     return jac_constraint, R
 
 @partial(jax.jit, static_argnums=(3, 4))
 def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None, energy=None, force=None, proj=None):
 
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.size)
+        inverse_mass = np.ones(momentum.size)
 
     if energy is None:
         energy = potential(position)
@@ -36,7 +40,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, inverse_mass=None
 def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, inverse_mass=None, proj=None, max_newton_iter=20, tol=1e-9):
     
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.size)
+        inverse_mass = np.ones(momentum.size)
 
     if proj is None:
         jac_constraint = jax.jacfwd(constraint)(position)
@@ -57,7 +61,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, inverse_mass=None, proj=None, temperature=1):
     
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.size)
+        inverse_mass = np.ones(momentum.size)
 
     if proj is None:
         jac_constraint = jax.jacfwd(constraint)(position)
@@ -87,7 +91,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         force = jax.grad(potential)(position)
 
     if inverse_mass is None:
-        inverse_mass = np.identity(momentum.size)
+        inverse_mass = np.ones(momentum.size)
 
     jac_constraint = jax.jacfwd(constraint)(position)
     proj = cotangency_proj(jac_constraint, inverse_mass)
