@@ -127,9 +127,9 @@ def brusselator_bvp_jac(q):
         y_i = jax.lax.dynamic_slice(y, (0, i * gauss_points.size), (model.Brusselator.n_dim, gauss_points.size + 1))
         Jy_i = jax.jacfwd(brusselator_bvp_interval, argnums=0)(y_i, k, period, colloc_points, node_points)\
                 .reshape((gauss_points.size * model.Brusselator.n_dim, (gauss_points.size + 1) * model.Brusselator.n_dim), order="F")
-        Jk_i = jax.jacfwd(brusselator_bvp_interval, argnums=1)(y_i, k, period, colloc_points, node_points)
+        Jk_i = jax.jacfwd(lambda x:brusselator_bvp_interval(y_i, np.exp(x), period, colloc_points, node_points))(q[:model.Brusselator.n_par])
         Jw_i = jax.jacfwd(brusselator_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
         return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
     
-    J = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
+    J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], model.Brusselator.n_dim, model.Brusselator.n_par, n_mesh_intervals)
     return J
