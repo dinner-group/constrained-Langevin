@@ -156,14 +156,15 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     proj = cotangency_proj(Jcons, inverse_mass)
 
     out = np.full((n_steps // thin, position.size + momentum.size + lagrange_multiplier.size + 1 + force.size), np.nan)
+    key_out = np.zeros((n_steps // thin, 2), dtype=np.uint32)
 
     def cond(carry):
-        i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key = carry
+        i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out = carry
         return (i < n_steps) & success & (energy < 2e3)
 
     def loop_body(carry):
         
-        i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key = carry
+        i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out = carry
 
         position, momentum, _, energy, force, proj,= rattle_kick(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy, force, proj)
         position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj, nlsol, max_newton_iter, tol)
@@ -173,9 +174,10 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
         out = jax.lax.dynamic_update_slice(out, np.array([out_step]), (i // thin, 0))
-        return (i + 1, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key)
+        key_out = key_out.at[i].set(prng_key)
+        return (i + 1, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out)
 
-    init = (0, position, momentum, lagrange_multiplier, energy, force, proj, out, True, prng_key)
-    i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key = jax.lax.while_loop(cond, loop_body, init)
+    init = (0, position, momentum, lagrange_multiplier, energy, force, proj, out, True, prng_key, key_out)
+    i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out = jax.lax.while_loop(cond, loop_body, init)
     
-    return out, prng_key
+    return out, key_out
