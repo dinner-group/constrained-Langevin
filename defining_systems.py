@@ -96,8 +96,9 @@ def brusselator_bvp_interval(y, k, period, colloc_points, node_points):
     return np.ravel(poly_deriv - jax.vmap(lambda yy:period * br.f(0., yy, k))(poly), order="C")
 
 @jax.jit
-def brusselator_bvp(q):
-    
+def brusselator_bvp(q, mesh_points=np.linspace(0, 1, 61)):
+   
+    n_mesh_intervals = mesh_points.size - 1
     k = np.exp(q[:model.Brusselator.n_par])
     n_points = (n_mesh_intervals * gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
@@ -114,8 +115,9 @@ def brusselator_bvp(q):
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0]])
 
 @jax.jit
-def brusselator_bvp_jac(q):
-    
+def brusselator_bvp_jac(q, mesh_points=np.linspace(0, 1, 61)):
+   
+    n_mesh_intervals = mesh_points.size - 1
     k = np.exp(q[:model.Brusselator.n_par])
     n_points = (n_mesh_intervals * gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
@@ -135,8 +137,10 @@ def brusselator_bvp_jac(q):
     return J
 
 @jax.jit
-def brusselator_bvp_potential(q):
+def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     
+    n_mesh_intervals = mesh_points.size - 1
+
     E = 0
     
     n_points = (n_mesh_intervals * gauss_points.size + 1)
