@@ -81,7 +81,25 @@ class BVPJac:
             return (i + 1, out), _
         
         return jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
-    
+   
+    @jax.jit
+    def jvp(self, v):
+        
+        vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
+        vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:]])
+        out = np.pad(np.vstack(self.Jk)@vk, (0, self.n_dim))
+
+        def loop_body(carry, _):
+            i, out = carry
+            outi = jax.lax.dynamic_slice(out, (i * self.Jy.shape[1],), (self.Jy.shape[1],))
+            vyi = jax.lax.dynamic_slice(vy, (i * self.Jy.shape[1],), (self.Jy.shape[2],))
+            out = jax.lax.dynamic_update_slice(out, outi + self.Jy[i]@vyi, (i * self.Jy.shape[1],))
+            return (i + 1, out), _
+
+        out = jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
+        out = out.at[-self.n_dim:].add(self.Jbc_left@vy[:self.n_dim] + self.Jbc_right@vy[-self.n_dim:])
+        return out
+
     @jax.jit
     def right_multiply_diag(self, D):
 
