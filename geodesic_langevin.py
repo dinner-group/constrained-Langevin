@@ -70,12 +70,18 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         Jcons = jac_constraint(position)
         proj = cotangency_proj(Jcons, inverse_mass)
 
-    if inverse_mass is None:
-        jac_prevM = proj[0]
-    elif len(inverse_mass.shape) == 1:
-        jac_prevM = proj[0] * inverse_mass
+    if isinstance(Jcons, util.BVPJac):
+        if inverse_mass is None:
+            jac_prevM = proj[0]
+        else:
+            jac_prevM = proj[0].right_multiply_diag(inverse_mass)
     else:
-        jac_prevM = proj[0]@inverse_mass
+        if inverse_mass is None:
+            jac_prevM = proj[0]
+        elif len(inverse_mass.shape) == 1:
+            jac_prevM = proj[0] * inverse_mass
+        else:
+            jac_prevM = proj[0]@inverse_mass
 
     position_new = position + dt * velocity(momentum, inverse_mass)
     position_new, success = nlsol(position_new, constraint, jac_prevM)

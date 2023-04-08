@@ -65,6 +65,24 @@ class BVPJac:
         return np.hstack([Jk[:, :self.n_par], Jy_dense, Jk[:, self.n_par:]])
 
     @jax.jit
+    def vjp(self, v):
+        
+        out = np.zeros(self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jk.shape[2])
+        out = out.at[:self.n_par].set(v[:-self.n_dim]@np.vstack(self.Jk[:, :, :self.n_par]))
+        out = out.at[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:].set(v[:-self.n_dim]@np.vstack(self.Jk[:, :, self.n_par:]))
+        out = out.at[self.n_par:self.n_par + self.n_dim].set(self.Jbc_left@v[-self.n_dim:])
+        out = out.at[self.n_par + self.Jy.shape[0] * self.Jy.shape[1]:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim].set(self.Jbc_right@v[-self.n_dim:])
+        
+        def loop_body(carry, _):
+            i, out = carry
+            outi = jax.lax.dynamic_slice(out, (self.n_par + i * self.Jy.shape[1],), (self.Jy.shape[2],))
+            vi = jax.lax.dynamic_slice(v, (i * self.Jy.shape[1],), (self.Jy.shape[1],))
+            out = jax.lax.dynamic_update_slice(out, outi + vi@self.Jy[i], (self.n_par + i * self.Jy.shape[1],))
+            return (i + 1, out), _
+        
+        return jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
+    
+    @jax.jit
     def right_multiply_diag(self, D):
 
         Dy = D[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
