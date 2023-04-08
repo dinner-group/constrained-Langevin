@@ -44,7 +44,7 @@ def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9):
     return x, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 4, 5))
-def newton_bvp_dense(x, resid, jac, jac_prev, max_iter=20, tol=1e-9):
+def newton_bvp_dense(x, resid, jac_prev, jac, max_iter=20, tol=1e-9):
 
     def cond(carry):
         x, step, dx = carry
@@ -58,6 +58,7 @@ def newton_bvp_dense(x, resid, jac, jac_prev, max_iter=20, tol=1e-9):
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
+    x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))

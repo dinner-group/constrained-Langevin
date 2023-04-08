@@ -72,7 +72,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
 
     momentum_new = momentum - dt * force
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
-    momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
+    momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, proj
 
@@ -86,7 +86,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         Jcons = jac_constraint(position)
         proj = cotangency_proj(Jcons, inverse_mass)
 
-    if isinstance(Jcons, util.BVPJac):
+    if isinstance(proj[0], util.BVPJac):
         if inverse_mass is None:
             jac_prevM = proj[0]
         else:
@@ -100,7 +100,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
             jac_prevM = proj[0]@inverse_mass
 
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, success = nlsol(position_new, constraint, jac_prevM)
+    position_new, success = nlsol(position_new, constraint, jac_prevM, jac_constraint)
     Jcons = jac_constraint(position_new)
     momentum_new = (position_new - position) / dt
 
