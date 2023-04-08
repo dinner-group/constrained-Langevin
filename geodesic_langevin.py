@@ -44,7 +44,7 @@ def vjp(J, v):
     if isinstance(J, util.BVPJac):
         return J.vjp(v)
     else:
-        return J@v
+        return v@J
 
 @jax.jit
 def jvp(J, v):
@@ -52,7 +52,7 @@ def jvp(J, v):
     if isinstance(J, util.BVPJac):
         return J.jvp(v)
     else:
-        return v@J
+        return J@v
 
 @partial(jax.jit, static_argnums=(3, 4, 5))
 def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, proj=None):
