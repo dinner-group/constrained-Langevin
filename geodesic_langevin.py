@@ -61,7 +61,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
         energy = potential(position)
 
     if force is None:
-        force = jax.grad(potential)(position)
+        force = jax.jacfwd(potential)(position)
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
