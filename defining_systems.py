@@ -89,7 +89,7 @@ mesh_points = np.linspace(0, 1, n_mesh_intervals + 1)
 def brusselator_bvp_interval(y, k, period, colloc_points, node_points):
     
     br = model.Brusselator(k)
-    dd = divided_difference(node_points, y)
+    dd = util.divided_difference(node_points, y)
     poly_interval = lambda t:newton_polynomial(t, node_points, y, dd)
     poly = jax.vmap(poly_interval)(colloc_points)
     poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
