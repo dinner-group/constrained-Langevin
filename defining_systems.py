@@ -80,8 +80,6 @@ def brusselator_hb_n(q):
 def brusselator_potential(q):
     return 100 * np.where(np.abs(q[:model.Brusselator.n_par]) > np.log(100), (np.abs(q[:model.Brusselator.n_par]) - np.log(100))**2, 0).sum()
 
-gauss_points = np.array([-np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5)), -np.sqrt(3 / 7 - (2 / 7) * np.sqrt(6 / 5)), np.sqrt(3 / 7 - (2 / 7) * np.sqrt(6 / 5)), np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5))])
-gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 n_mesh_intervals = 60
 mesh_points = np.linspace(0, 1, n_mesh_intervals + 1)
 
@@ -100,14 +98,14 @@ def brusselator_bvp(q, mesh_points=np.linspace(0, 1, 61)):
    
     n_mesh_intervals = mesh_points.size - 1
     k = np.exp(q[:model.Brusselator.n_par])
-    n_points = (n_mesh_intervals * gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim + 1]
     
     def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], gauss_points.size + 1)
-        colloc_points = mesh_points[i] + gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * gauss_points.size), (model.Brusselator.n_dim, gauss_points.size + 1))
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
         r_i = brusselator_bvp_interval(y_i, k, period, colloc_points, node_points)
         return i + 1, r_i
     
@@ -119,16 +117,16 @@ def brusselator_bvp_jac(q, mesh_points=np.linspace(0, 1, 61)):
    
     n_mesh_intervals = mesh_points.size - 1
     k = np.exp(q[:model.Brusselator.n_par])
-    n_points = (n_mesh_intervals * gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim + 1]
     
     def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], gauss_points.size + 1)
-        colloc_points = mesh_points[i] + gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * gauss_points.size), (model.Brusselator.n_dim, gauss_points.size + 1))
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
         Jy_i = jax.jacfwd(brusselator_bvp_interval, argnums=0)(y_i, k, period, colloc_points, node_points)\
-                .reshape((gauss_points.size * model.Brusselator.n_dim, (gauss_points.size + 1) * model.Brusselator.n_dim), order="F")
+                .reshape((util.gauss_points.size * model.Brusselator.n_dim, (util.gauss_points.size + 1) * model.Brusselator.n_dim), order="F")
         Jk_i = jax.jacfwd(lambda x:brusselator_bvp_interval(y_i, np.exp(x), period, colloc_points, node_points))(q[:model.Brusselator.n_par])
         Jw_i = jax.jacfwd(brusselator_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
         return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
@@ -143,7 +141,7 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
 
     E = 0
     
-    n_points = (n_mesh_intervals * gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim + 1]
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
