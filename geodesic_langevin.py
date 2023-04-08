@@ -38,6 +38,22 @@ def velocity(momentum, inverse_mass):
 
     return v
 
+@jax.jit
+def vjp(J, v):
+
+    if isinstance(J, util.BVPJac):
+        return J.vjp(v)
+    else:
+        return J@v
+
+@jax.jit
+def jvp(J, v):
+
+    if isinstance(J, util.BVPJac):
+        return J.jvp(v)
+    else:
+        return v@J
+
 @partial(jax.jit, static_argnums=(3, 4, 5))
 def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, proj=None):
 
@@ -55,7 +71,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
         proj = cotangency_proj(Jcons, inverse_mass)
 
     momentum_new = momentum - dt * force
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@velocity(momentum_new, inverse_mass))
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
     momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, proj
@@ -89,8 +105,8 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     momentum_new = (position_new - position) / dt
 
     proj = cotangency_proj(Jcons, inverse_mass)
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@velocity(momentum_new, inverse_mass))
-    momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
+    momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 
     return position_new, momentum_new, lagrange_multiplier_new, proj, success
 
@@ -119,12 +135,12 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
 
     momentum_new = drag * momentum + W
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), proj[0]@velocity(momentum_new, inverse_mass))
-    momentum_new = momentum_new - proj[0].T@lagrange_multiplier_new
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
+    momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 
     return position, momentum_new, lagrange_multiplier_new, key
 
-@partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 15, 16, 17))
+@partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 14, 16, 17))
 def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, nlsol=nonlinear_solver.newton_rattle, temperature=1, max_newton_iter=20, tol=1e-9):
 
     if jac_constraint is None:
