@@ -174,7 +174,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
         out = jax.lax.dynamic_update_slice(out, np.array([out_step]), (i // thin, 0))
-        key_out = key_out.at[i].set(prng_key)
+        key_out = jax.lax.dynamic_update_slice(key_out, prng_key, (i // thin, 0))
         return (i + 1, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out)
 
     init = (0, position, momentum, lagrange_multiplier, energy, force, proj, out, True, prng_key, key_out)
