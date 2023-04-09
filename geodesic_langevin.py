@@ -150,7 +150,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         energy = potential(position)
 
     if force is None:
-        force = jax.grad(potential)(position)
+        force = jax.jacfwd(potential)(position)
 
     Jcons = jac_constraint(position)
     proj = cotangency_proj(Jcons, inverse_mass)
