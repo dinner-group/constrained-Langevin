@@ -223,4 +223,4 @@ class BVPJac:
     def _tree_unflatten(cls, aux_data, children):
         return cls(*children[:2], Jbc_left=children[2], Jbc_right=children[3], **aux_data)
 
-jax.tree_register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
+jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
