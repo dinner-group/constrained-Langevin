@@ -90,7 +90,7 @@ def interpolate(y, mesh_old, mesh_new, gauss_points):
         yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
         return _, newton_polynomial(t, meshi, yi, dd[i])
     
-    _, y_new = jax.lax.scan(loop2, init=None, xs=fill_mesh(mesh_new)[1:-1])
+    _, y_new = jax.lax.scan(loop2, init=None, xs=fill_mesh(mesh_new, gauss_points)[1:-1])
     y_new = np.hstack([y[:, :1], y_new.T, y[:, -1:]])
     return y_new
 
