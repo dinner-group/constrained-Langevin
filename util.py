@@ -80,7 +80,7 @@ def interpolate(y, mesh_old, mesh_new, gauss_points):
     def loop1(i, _):
         meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
         yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
-        return i + 1, util.divided_difference(meshi, yi)
+        return i + 1, divided_difference(meshi, yi)
         
     dd = jax.lax.scan(loop1, init=0, xs=None, length=mesh_old.size - 1)[1]
         
@@ -90,7 +90,7 @@ def interpolate(y, mesh_old, mesh_new, gauss_points):
         yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
         return _, newton_polynomial(t, meshi, yi, dd[i])
     
-    _, y_new = jax.lax.scan(loop2, init=None, xs=util.fill_mesh(mesh_new)[1:-1])
+    _, y_new = jax.lax.scan(loop2, init=None, xs=fill_mesh(mesh_new)[1:-1])
     y_new = np.hstack([y[:, :1], y_new.T, y[:, -1:]])
     return y_new
 
@@ -223,4 +223,4 @@ class BVPJac:
     def _tree_unflatten(cls, aux_data, children):
         return cls(*children[:2], Jbc_left=children[2], Jbc_right=children[3], **aux_data)
 
-jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
+jax.tree_register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
