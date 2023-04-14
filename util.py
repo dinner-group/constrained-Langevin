@@ -44,7 +44,7 @@ def smooth_mesh_density(mesh_density, n_smooth=4):
         mesh_density = mesh_density.at[i].set(mesh_density[i - 1] / 4 + mesh_density[i] / 2 + mesh_density[i + 1] / 4)
         return (i + 1, mesh_density), _
     
-    def loop_outer(carry, i):
+    def loop_outer(carry, _):
         i, mesh_density = carry
         mesh_density = mesh_density.at[0].set((mesh_density[0] + mesh_density[1]) / 2)
         mesh_density = jax.lax.scan(loop_inner, init=(1, mesh_density), xs=None, length=mesh_density.size - 2)[0][1]
