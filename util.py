@@ -8,7 +8,7 @@ gauss_points = np.array([-np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5)), -np.sqrt(3 
 gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 
 @jax.jit
-def fill_mesh(t):
+def fill_mesh(t, gauss_points):
     return np.concatenate([np.ravel(np.expand_dims(t[:-1], 1) + np.expand_dims(t[1:] - t[:-1], 1) * np.linspace(0, 1, gauss_points.size + 1)[:-1]), np.array([1])])
 
 @jax.jit
@@ -35,6 +35,64 @@ def newton_polynomial(t, node_t, node_y, dd=None):
         dd = divided_difference(node_t, node_y)
         
     return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1)) * dd[np.diag_indices(node_t.size)].T, axis=1)
+
+@partial(jax.jit, static_argnums=1)
+def smooth_mesh_density(mesh_density, n_smooth=4):
+    
+    def loop_inner(carry, _):
+        i, mesh_density = carry
+        mesh_density = mesh_density.at[i].set(mesh_density[i - 1] / 4 + mesh_density[i] / 2 + mesh_density[i + 1] / 4)
+        return (i + 1, mesh_density), _
+    
+    def loop_outer(carry, i):
+        i, mesh_density = carry
+        mesh_density = mesh_density.at[0].set((mesh_density[0] + mesh_density[1]) / 2)
+        mesh_density = jax.lax.scan(loop_inner, init=(1, mesh_density), xs=None, length=mesh_density.size - 2)[0][1]
+        mesh_density = mesh_density.at[-1].set((mesh_density[-1] + mesh_density[-2]) / 2)
+        return (i + 1, mesh_density), _
+    
+    mesh_density = jax.lax.scan(loop_outer, init=(0, mesh_density), xs=None, length=n_smooth)[0][1]
+    
+    return mesh_density
+
+@partial(jax.jit, static_argnums=3)
+def recompute_mesh(y, mesh_old, gauss_points, n_smooth=4):
+    
+    def loop_body(i, _):
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0, i * gauss_points.size), (y.shape[0], gauss_points.size + 1))
+        return i + 1, gauss_points.size * divided_difference(meshi, yi)[np.diag_indices(gauss_points.size + 1)][-1]
+    
+    _, deriv = jax.lax.scan(loop_body, init=0, xs=None, length=mesh_old.size - 1)
+    midpoints = (mesh_old[1:] + mesh_old[:-1]) / 2
+    deriv = np.pad((deriv[1:] - deriv[:-1]).T / (midpoints[1:] - midpoints[:-1]), ((0, 0), (1, 1)), mode="edge")
+    a = np.trapz(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (gauss_points.size + 1))), x=mesh_old)**(1 + 2 * (gauss_points.size + 1))
+    mesh_density = (1 + np.sum(deriv**2, axis=0) / a)**(1 / (1 + 2 * (gauss_points.size + 1)))
+    mesh_density = smooth_mesh_density(mesh_density, n_smooth)
+    mesh_mass = np.pad(np.cumsum((mesh_density[1:] + mesh_density[:-1]) * (mesh_old[1:] - mesh_old[:-1])) / 2, (1, 0))
+    mesh_new = np.interp(np.linspace(0, mesh_mass[-1], mesh_old.size), mesh_mass, mesh_old)
+    
+    return mesh_new, mesh_density
+
+@jax.jit
+def interpolate(y, mesh_old, mesh_new, gauss_points):
+    
+    def loop1(i, _):
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
+        return i + 1, util.divided_difference(meshi, yi)
+        
+    dd = jax.lax.scan(loop1, init=0, xs=None, length=mesh_old.size - 1)[1]
+        
+    def loop2(_, t):
+        i = np.searchsorted(mesh_old, t) - 1
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
+        return _, newton_polynomial(t, meshi, yi, dd[i])
+    
+    _, y_new = jax.lax.scan(loop2, init=None, xs=util.fill_mesh(mesh_new)[1:-1])
+    y_new = np.hstack([y[:, :1], y_new.T, y[:, -1:]])
+    return y_new
 
 class BVPJac:
 
