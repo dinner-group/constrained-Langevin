@@ -8,6 +8,10 @@ gauss_points = np.array([-np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5)), -np.sqrt(3 
 gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 
 @jax.jit
+def smooth_max(x, smooth_max_temperature=1):
+    return np.sum(x * np.exp(smooth_max_temperature * x)) / np.sum(np.exp(smooth_max_temperature * x))
+
+@jax.jit
 def fill_mesh(t, gauss_points):
     return np.concatenate([np.ravel(np.expand_dims(t[:-1], 1) + np.expand_dims(t[1:] - t[:-1], 1) * np.linspace(0, 1, gauss_points.size + 1)[:-1]), np.array([1])])
 
