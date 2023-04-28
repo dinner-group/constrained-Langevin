@@ -164,11 +164,11 @@ def brusselator_bvp_fourier(q, fft_points=500):
     basis_size = y_coeff.shape[1] // 2 + 1
     period = q[-1]
     ydot_coeff = np.hstack([np.zeros_like(y_coeff[:, :1]), 2 * np.pi * np.arange(1, basis_size) * y_coeff[:, basis_size:], -2 * np.pi * np.arange(1, basis_size) * y_coeff[:, 1:basis_size]])
-    y = fft_points * np.fft.irfft(np.pad(fft_trigtoexp(y_coeff), ((0, 0), (0, fft_points // 2 - basis_size + 1))))
-    ydot = fft_points * np.fft.irfft(np.pad(fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - basis_size + 1))))
+    y = fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(y_coeff), ((0, 0), (0, fft_points // 2 - basis_size + 1))))
+    ydot = fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - basis_size + 1))))
     fy = jax.vmap(lambda x:period * br.f(0., x, k))(y.T).T
     fy_fft = np.fft.rfft(fy / fft_points)
-    fy_coeff = fft_exptotrig(fy_fft[:, :basis_size])
+    fy_coeff = util.fft_exptotrig(fy_fft[:, :basis_size])
     return (fy_coeff - ydot_coeff).ravel(order="F")
 
 @partial(jax.jit, static_argnums=(1,))
@@ -187,8 +187,8 @@ def brusselator_bvp_fourier_potential(q, fft_points=500):
     
     min_arclength = 0.3
     max_curvature = 50
-    arclength = np.trapz(np.linalg.norm(fft_points * np.fft.irfft(np.pad(fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - ydot_coeff.shape[1] // 2)))), axis=0), x=np.linspace(0, 1, fft_points))
-    yddot = fft_points * np.fft.irfft(np.pad(fft_trigtoexp(yddot_coeff), ((0, 0), (0, fft_points // 2 - yddot_coeff.shape[1] // 2))))
+    arclength = np.trapz(np.linalg.norm(fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - ydot_coeff.shape[1] // 2)))), axis=0), x=np.linspace(0, 1, fft_points))
+    yddot = fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(yddot_coeff), ((0, 0), (0, fft_points // 2 - yddot_coeff.shape[1] // 2))))
     curvature = (1 + np.linalg.norm(yddot, axis=0)**2)**(1/4)
     curvature /= np.trapz(curvature, np.linspace(0, 1, fft_points))
     
