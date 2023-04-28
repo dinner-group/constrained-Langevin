@@ -16,6 +16,14 @@ def fill_mesh(t, gauss_points):
     return np.concatenate([np.ravel(np.expand_dims(t[:-1], 1) + np.expand_dims(t[1:] - t[:-1], 1) * np.linspace(0, 1, gauss_points.size + 1)[:-1]), np.array([1])])
 
 @jax.jit
+def fft_trigtoexp(x):
+    return np.hstack([x[:, :1], (x[:, 1:x.shape[1] // 2 + 1] - 1j * x[:, x.shape[1] // 2 + 1:]) / 2])
+
+@jax.jit
+def fft_exptotrig(x):
+    return np.hstack([x[:, :1].real, 2 * x[:, 1:].real, -2 * x[:, 1:].imag])
+
+@jax.jit
 def divided_difference(node_t, node_y):
 
     node_y = node_y.T
