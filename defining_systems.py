@@ -190,6 +190,7 @@ def brusselator_bvp_fourier_potential(q, fft_points=500):
     arclength = np.trapz(np.linalg.norm(fft_points * np.fft.irfft(np.pad(fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - ydot_coeff.shape[1] // 2)))), axis=0), x=np.linspace(0, 1, fft_points))
     yddot = fft_points * np.fft.irfft(np.pad(fft_trigtoexp(yddot_coeff), ((0, 0), (0, fft_points // 2 - yddot_coeff.shape[1] // 2))))
     curvature = (1 + np.linalg.norm(yddot, axis=0)**2)**(1/4)
+    curvature /= np.trapz(curvature, np.linspace(0, 1, fft_points))
     
     E += 100 * np.where(np.abs(q[:model.Brusselator.n_par]) > np.log(100), (np.abs(q[:model.Brusselator.n_par]) - np.log(100))**2, 0).sum()
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
