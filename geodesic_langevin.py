@@ -74,7 +74,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
     momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 
-    return position, momentum_new, lagrange_multiplier_new, energy, force, proj
+    return position, momentum_new, lagrange_multiplier_new, energy, force, proj, constraint_args
 
 @partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12))
 def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, proj=None, constraint_args=(), nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, tol=1e-9):
@@ -100,7 +100,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
             jac_prevM = proj[0]@inverse_mass
 
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, success = nlsol(position_new, constraint, jac_prevM, jac_constraint, args=constraint_args)
+    position_new, constraint_args, success = nlsol(position_new, constraint, jac_prevM, jac_constraint, args=constraint_args)
     Jcons = jac_constraint(position_new, *constraint_args)
     momentum_new = (position_new - position) / dt
 
@@ -108,7 +108,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
     momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 
-    return position_new, momentum_new, lagrange_multiplier_new, proj, success
+    return position_new, momentum_new, lagrange_multiplier_new, proj, constraint_args, success
 
 @partial(jax.jit, static_argnums=(5, 6, 7))
 def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, proj=None, constraint_args=(), temperature=1):
@@ -138,7 +138,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
     momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 
-    return position, momentum_new, lagrange_multiplier_new, key
+    return position, momentum_new, lagrange_multiplier_new, key, constraint_args
 
 @partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 16, 17, 18))
 def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, constraint_args=(), temperature=1, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, tol=1e-9):
@@ -164,25 +164,30 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     key_out = np.zeros((n_steps // thin, 2), dtype=np.uint32)
 
     def cond(carry):
-        i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out = carry
+        i, position, momentum, lagrange_multiplier, energy, force, proj, constraint_args, out, success, prng_key, key_out = carry
         return (i < n_steps) & success & (energy < 2e3)
 
     def loop_body(carry):
         
-        i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out = carry
+        i, position, momentum, lagrange_multiplier, energy, force, proj, constraint_args, out, success, prng_key, key_out = carry
 
-        position, momentum, _, energy, force, proj = rattle_kick(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy, force, proj, constraint_args)
-        position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj, constraint_args, nlsol, max_newton_iter, tol)
-        position, momentum, _, prng_key = rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, proj, constraint_args, temperature)
-        position, momentum, lagrange_multiplier, proj, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj, constraint_args, nlsol, max_newton_iter, tol)
-        position, momentum, _, energy, force, proj = rattle_kick(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj=proj, constraint_args=constraint_args)
+        position, momentum, _, energy, force, proj, constraint_args = rattle_kick(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy, force, proj, constraint_args)
+        position, momentum, lagrange_multiplier, proj, constraint_args, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj, constraint_args, nlsol, max_newton_iter, tol)
+        position, momentum, _, prng_key, constraint_args = rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, proj, constraint_args, temperature)
+        position, momentum, lagrange_multiplier, proj, constraint_args, success =  rattle_drift(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj, constraint_args, nlsol, max_newton_iter, tol)
+        position, momentum, _, energy, force, proj, constraint_args = rattle_kick(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, proj=proj, constraint_args=constraint_args)
         
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
+
+        if(constraint_args_size > 0):
+            constraint_args_flatten = np.concatenate(tuple(np.ravel(x) for x in constraint_args))
+            out_step = np.concatenate([out_step, constraint_args_flatten])
+        
         out = jax.lax.dynamic_update_slice(out, np.expand_dims(out_step, 0), (i // thin, 0))
         key_out = jax.lax.dynamic_update_slice(key_out, np.expand_dims(prng_key, 0), (i // thin, 0))
-        return (i + 1, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out)
+        return (i + 1, position, momentum, lagrange_multiplier, energy, force, proj, constraint_args, out, success, prng_key, key_out)
 
-    init = (0, position, momentum, lagrange_multiplier, energy, force, proj, out, True, prng_key, key_out)
-    i, position, momentum, lagrange_multiplier, energy, force, proj, out, success, prng_key, key_out = jax.lax.while_loop(cond, loop_body, init)
+    init = (0, position, momentum, lagrange_multiplier, energy, force, proj, constraint_args, out, True, prng_key, key_out)
+    i, position, momentum, lagrange_multiplier, energy, force, proj, constraint_args, out, success, prng_key, key_out = jax.lax.while_loop(cond, loop_body, init)
     
     return out, key_out
