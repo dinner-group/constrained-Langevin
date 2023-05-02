@@ -100,7 +100,7 @@ def brusselator_bvp(q, mesh_points=np.linspace(0, 1, 61)):
     k = np.exp(q[:model.Brusselator.n_par])
     n_points = (n_mesh_intervals * util.gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
-    period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim + 1]
+    period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
     
     def loop_body(i, _):
         node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
@@ -119,7 +119,7 @@ def brusselator_bvp_jac(q, mesh_points=np.linspace(0, 1, 61)):
     k = np.exp(q[:model.Brusselator.n_par])
     n_points = (n_mesh_intervals * util.gauss_points.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
-    period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim + 1]
+    period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
     
     def loop_body(i, _):
         node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
@@ -185,8 +185,8 @@ def brusselator_bvp_fourier_potential(q, fft_points=500):
     
     E = 0
     
-    min_arclength = 0.3
-    max_curvature = 10
+    min_arclength = 0.5
+    max_curvature = 5
     arclength = np.trapz(np.linalg.norm(fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - ydot_coeff.shape[1] // 2)))), axis=0), x=np.linspace(0, 1, fft_points))
     yddot = fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(yddot_coeff), ((0, 0), (0, fft_points // 2 - yddot_coeff.shape[1] // 2))))
     curvature = (1 + np.linalg.norm(yddot, axis=0)**2)**(1/4)
