@@ -24,7 +24,7 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9, *args):
     return x, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 4, 5))
-def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9):
+def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9, args=()):
 
     if jac_prev is None:
         return gauss_newton(x, resid,jac, max_iter, tol)
@@ -38,8 +38,9 @@ def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9):
 
     def loop_body(carry):
         x, step, dx = carry
-        J = jac(x)
-        dx = jac_prev.T@np.linalg.solve(J@jac_prev.T, -resid(x))
+        J = jac(x, *args)
+        dx = jac_prev.T@np.linalg.solve(J@jac_prev.T, -resid(x, *args))
+        jax.debug.print("{}", np.max(np.abs(dx)))
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
@@ -95,7 +96,7 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, max_qn_iter=100, max_newto
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, True), lambda x:newton_rattle(x, resid, jac_prev, jac, max_newton_iter, tol), x)
 
 @partial(jax.jit, static_argnums=(1, 3, 4, 5))
-def newton_bvp_dense(x, resid, jac_prev, jac, max_iter=20, tol=1e-9):
+def newton_bvp_dense(x, resid, jac_prev, jac, max_iter=20, tol=1e-9, args=()):
 
     def cond(carry):
         x, step, dx = carry
@@ -103,9 +104,9 @@ def newton_bvp_dense(x, resid, jac_prev, jac, max_iter=20, tol=1e-9):
 
     def loop_body(carry):
         x, step, dx = carry
-        J = jac(x)
+        J = jac(x, *args)
         JJT = util.BVPJac.multiply_transpose(J, jac_prev)
-        dx = jac_prev.vjp(np.linalg.solve(JJT, -resid(x)))
+        dx = jac_prev.vjp(np.linalg.solve(JJT, -resid(x, *args)))
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
