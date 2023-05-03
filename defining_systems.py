@@ -145,10 +145,13 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     min_arclength = 0.3
+    max_mesh_density = 10
     _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
-    mesh_quality = (mesh_points.size - 1) * (mesh_density[1:] + mesh_density[:-1]) * (mesh_points[1:] - mesh_points[:-1]) / (2 * np.trapz(mesh_density, mesh_points))
+    #mesh_quality = (mesh_points.size - 1) * (mesh_density[1:] + mesh_density[:-1]) * (mesh_points[1:] - mesh_points[:-1]) / (2 * np.trapz(mesh_density, mesh_points))
     
-    E += 20 * (util.smooth_max(mesh_quality, smooth_max_temperature=6) - 1)**2
+    #E += 20 * (util.smooth_max(mesh_quality, smooth_max_temperature=6) - 1)**2
+    mesh_density /= np.trapz(mesh_density, x=mesh_points)
+    E += 5 * (util.smooth_max(mesh_density, smooth_max_temperature=6) - max_mesh_density)**2
     E += 100 * np.where(np.abs(q[:model.Brusselator.n_par]) > np.log(100), (np.abs(q[:model.Brusselator.n_par]) - np.log(100))**2, 0).sum()
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
     

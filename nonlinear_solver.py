@@ -40,7 +40,6 @@ def newton_rattle(x, resid, jac_prev, jac=None, max_iter=20, tol=1e-9, args=()):
         x, step, dx = carry
         J = jac(x, *args)
         dx = jac_prev.T@np.linalg.solve(J@jac_prev.T, -resid(x, *args))
-        jax.debug.print("{}", np.max(np.abs(dx)))
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
