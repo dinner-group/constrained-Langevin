@@ -151,7 +151,9 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     
     #E += 20 * (util.smooth_max(mesh_quality, smooth_max_temperature=6) - 1)**2
     mesh_density /= np.trapz(mesh_density, x=mesh_points)
-    E += 5 * (util.smooth_max(mesh_density, smooth_max_temperature=6) - max_mesh_density)**2
+    mesh_density_max_val = util.smooth_max(mesh_density, smooth_max_temperature=6)
+
+    E += np.where(mesh_density_max_val >= max_mesh_density, 5 * (mesh_density_max_val - max_mesh_density)**2, 0)
     E += 100 * np.where(np.abs(q[:model.Brusselator.n_par]) > np.log(100), (np.abs(q[:model.Brusselator.n_par]) - np.log(100))**2, 0).sum()
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
     
