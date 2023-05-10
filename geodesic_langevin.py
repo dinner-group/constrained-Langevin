@@ -113,7 +113,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         momentum_new = jax.scipy.linalg.cho_solve((R, False), velocity_new)
 
     proj = cotangency_proj(Jcons, inverse_mass)
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
+    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity_new))
     momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
 #    if inverse_mass is None:
 #        momentum_norm = np.linalg.norm(momentum)
