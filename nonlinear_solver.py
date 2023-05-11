@@ -54,9 +54,9 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, max_qn_iter=100, max_newto
 
     J = jac(x, *args)
     lu = jax.scipy.linalg.lu_factor(J@jac_prev.T)
-    dx = J.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
+    dx = jac_prev.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
     x = x + dx
-    v = J.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
+    v = dx
     projection2 = v.T@dx / (dx@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -69,7 +69,7 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, max_qn_iter=100, max_newto
     def loop1(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v = J.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
+        v = jac_prev.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
         projection1 = v.T@dx_prev / (dx_prev@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx@dx)
@@ -78,15 +78,15 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, max_qn_iter=100, max_newto
         dx = v / (1 - projection2)
         return x, step + 1, dx, dx_prev, projection2, contraction_factor
 
-    def cond2(carry):
-        x, step, dx = carry
-        return (step < max_newton_iter) & np.any(np.abs(dx) > tol)
+    #def cond2(carry):
+    #    x, step, dx = carry
+    #    return (step < max_newton_iter) & np.any(np.abs(dx) > tol)
 
-    def loop2(carry):
-        x, step, dx = carry
-        J = jac(x)
-        dx = J.T@np.linalg.solve(J@jac_prev.T, -resid(x, *args))
-        return x + dx, step + 1, dx
+    #def loop2(carry):
+    #    x, step, dx = carry
+    #    J = jac(x)
+    #    dx = J.T@np.linalg.solve(J@jac_prev.T, -resid(x, *args))
+    #    return x + dx, step + 1, dx
 
     x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
     #x, n_iter, dl = jax.lax.while_loop(cond2, loop2, init_val=(x, 0, dl))
@@ -111,6 +111,40 @@ def newton_bvp_dense(x, resid, jac_prev, jac, max_iter=20, tol=1e-9, args=()):
     init = (x, 0, np.full_like(x, np.inf))
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, args, np.all(np.abs(dx) < tol)
+
+@partial(jax.jit, static_argnums=(1, 3, 4, 5, 6))
+def quasi_newton_bvp_dense(x, resid, jac_prev, jac, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=()):
+
+    J = jac(x, *args)
+    JJT = util.BVPJac.multiply_transpose(J, jac_prev)
+    lu = jax.scipy.linalg.lu_factor(JJT)
+    dx = jac_prev.vjp(jax.scipy.linalg.lu_solve(lu, -resid(x, *args)))
+    x = x + dx
+    v = dx
+    projection2 = v.T@dx / (dx@dx)
+    contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+    dx_prev = dx
+    dx = v / (1 - projection2)
+
+    def cond1(carry):
+        x, step, dx_prev, dx, projection2, contraction_factor = carry
+        return (step < max_qn_iter) & np.any(np.abs(dx) > tol) & (contraction_factor < 0.5)
+
+    def loop1(carry):
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
+        x = x + dx
+        v = jac_prev.vjp(jax.scipy.linalg.lu_solve(lu, -resid(x, *args)))
+        projection1 = v.T@dx_prev / (dx_prev@dx_prev)
+        v = v + projection1 * dx
+        projection2 = v.T@dx / (dx@dx)
+        contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+        dx_prev = dx
+        dx = v / (1 - projection2)
+        return x, step + 1, dx, dx_prev, projection2, contraction_factor
+
+    x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
+
+    return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_bvp_dense(x, resid, jac_prev, jac, max_newton_iter, tol, args), x)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=()):
