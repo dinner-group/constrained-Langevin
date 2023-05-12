@@ -36,29 +36,30 @@ i = 1
 dt = 1e-2
 prng_key = np.load("brusselator_lc_key%d.npy"%(i - 1))[-1]
 #prng_key = jax.random.PRNGKey(0)
-friction = 1
+friction = 1e-2
 
 n_mesh_intervals = 60
-mesh_points = np.linspace(0, 1, n_mesh_intervals + 1)
+#mesh_points = np.linspace(0, 1, n_mesh_intervals + 1)
 #mesh_points = np.load("brusselator_lc_mesh%d.npy"%i)
-n_mesh_intervals = mesh_points.size - 1
-n_points = n_mesh_intervals * util.gauss_points.size * model.Brusselator.n_dim + model.Brusselator.n_dim
+#n_mesh_intervals = mesh_points.size - 1
+n_points = n_mesh_intervals * util.gauss_points.size + 1
 fourier_basis_size = 100
 
-#q0 = np.load("brusselator_lc0.npy")
-#p0 = jax.random.normal(prng_key, q0.shape)
-#x = np.load("brusselator_lc%d.npy"%(i - 1))[-1, :2 * (n_points + model.Brusselator.n_par + 1)]
-x = np.load("brusselator_lc%d.npy"%(i - 1))[-1, :2 * (model.Brusselator.n_dim * (2 * fourier_basis_size - 1) + model.Brusselator.n_par + 1)]
-q0 = x[:x.size//2]
-p0 = x[x.size//2:]
+x = np.load("brusselator_lc%d.npy"%(i - 1))[-1]
+#x = np.load("brusselator_lc%d.npy"%(i - 1))[-1, :2 * (model.Brusselator.n_dim * n_points + model.Brusselator.n_par + 1)]
+#x = np.load("brusselator_lc%d.npy"%(i - 1))[-1, :2 * (model.Brusselator.n_dim * (2 * fourier_basis_size - 1) + model.Brusselator.n_par + 1)]
+q0 = x[:model.Brusselator.n_par + model.Brusselator.n_dim * n_points + 1]
+p0 = x[q0.size:2 * q0.size]
+mesh_points = x[-n_mesh_intervals - 1:]
+args = (mesh_points,)
 
-#br_lc_U = jax.jit(lambda q:defining_systems.brusselator_bvp_potential(q, mesh_points))
-#br_lc_f = jax.jit(lambda q:defining_systems.brusselator_bvp(q, mesh_points))
-#br_lc_J = jax.jit(lambda q:defining_systems.brusselator_bvp_jac(q, mesh_points))
-br_lc_U = defining_systems.brusselator_bvp_fourier_potential
-br_lc_f = defining_systems.brusselator_bvp_fourier
+br_lc_U = defining_systems.brusselator_bvp_potential
+br_lc_f = defining_systems.brusselator_bvp
+br_lc_J = defining_systems.brusselator_bvp_jac
+#br_lc_U = defining_systems.brusselator_bvp_fourier_potential
+#br_lc_f = defining_systems.brusselator_bvp_fourier
 
-q1, p1, l1, energy, force, _ = lgvn.rattle_kick(q0, p0, dt / 2, br_lc_U, br_lc_f)
+q1, p1, l1, energy, force, _, args = lgvn.rattle_kick(q0, p0, dt / 2, br_lc_U, br_lc_f, br_lc_J, args=args)
 n_nan = 0
 n_steps = 1000000
 thin = 100
@@ -125,7 +126,8 @@ key_out = []
 #
 #    q1, p1, l1, energy, force, _ = lgvn.rattle_kick(q1, p1, dt / 2, br_lc_U, br_lc_f, br_lc_J)
 
-traj_br_lc, key_lc = lgvn.gBAOAB(q1, p1, l1, dt, friction, n_steps, thin, prng_key, br_lc_U, br_lc_f, energy=energy, force=force, nlsol=nonlinear_solver.quasi_newton_rattle, max_newton_iter=50, tol=1e-8)
+traj_br_lc, key_lc = lgvn.gBAOAB(q1, p1, l1, dt, friction, n_steps, thin, prng_key, br_lc_U, br_lc_f, br_lc_J, energy=energy, force=force, A=rattle_drift_brusselator_bvp_mm, 
+                                 nlsol=nonlinear_solver.newton_bvp_dense, max_newton_iter=50, tol=1e-8, args=args)
 #np.save("brusselator_lc.npy", traj_br_lc)
 #np.save("brusselator_lc_key.npy", key_lc)
 
