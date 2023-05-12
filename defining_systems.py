@@ -159,6 +159,81 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     
     return E
 
+@jax.jit
+def brusselator_log_bvp_interval(y, k, period, colloc_points, node_points):
+
+    @jax.jit
+    def brusselator_log(y, k):
+        return np.array([np.exp(-y[0]) + k[0] * np.exp(y[0] + y[1]) - k[1] - k[2],
+                     -k[0] * np.exp(2 * y[0]) + k[1] * np.exp(y[0] - y[1])])
+
+    dd = util.divided_difference(node_points, y)
+    poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
+    poly = jax.vmap(poly_interval)(colloc_points)
+    poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
+    return np.ravel(poly_deriv - jax.vmap(lambda yy:period * brusselator_log(yy, k))(poly), order="C")
+
+@jax.jit
+def brusselator_log_bvp(q, mesh_points=np.linspace(0, 1, 61)):
+   
+    n_mesh_intervals = mesh_points.size - 1
+    k = np.exp(q[:model.Brusselator.n_par])
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
+    period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
+    
+    def loop_body(i, _):
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
+        r_i = brusselator_log_bvp_interval(y_i, k, period, colloc_points, node_points)
+        return i + 1, r_i
+    
+    colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
+    return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0]])
+
+@jax.jit
+def brusselator_log_bvp_jac(q, mesh_points=np.linspace(0, 1, 61)):
+   
+    n_mesh_intervals = mesh_points.size - 1
+    k = np.exp(q[:model.Brusselator.n_par])
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
+    period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
+    
+    def loop_body(i, _):
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
+        Jy_i = jax.jacfwd(brusselator_log_bvp_interval, argnums=0)(y_i, k, period, colloc_points, node_points)\
+                .reshape((util.gauss_points.size * model.Brusselator.n_dim, (util.gauss_points.size + 1) * model.Brusselator.n_dim), order="F")
+        Jk_i = jax.jacfwd(lambda x:brusselator_log_bvp_interval(y_i, np.exp(x), period, colloc_points, node_points))(q[:model.Brusselator.n_par])
+        Jw_i = jax.jacfwd(brusselator_log_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
+        return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
+    
+    J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], model.Brusselator.n_dim, model.Brusselator.n_par, n_mesh_intervals)
+    return J
+
+@jax.jit
+def brusselator_log_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
+
+    n_mesh_intervals = mesh_points.size - 1
+    E = 0
+
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    logy = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
+    arclength = np.linalg.norm(logy[:, 1:] - logy[:, :-1], axis=0).sum()
+    min_arclength = 0.3
+    _, mesh_density = util.recompute_mesh(logy, mesh_points, util.gauss_points)
+    mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
+    mesh_density_peak = util.smooth_max(mesh_density, smooth_max_temperature=6)
+    
+    E += 100 * np.where(np.abs(q[:model.Brusselator.n_par]) > np.log(100), (np.abs(q[:model.Brusselator.n_par]) - np.log(100))**2, 0).sum()
+    E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
+    E += np.where(mesh_density_peak >= 5, (mesh_density_peak - 5)**2, 0)
+
+    return E
+
 @partial(jax.jit, static_argnums=(1,))
 def brusselator_bvp_fourier(q, fft_points=500):
     
