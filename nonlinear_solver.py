@@ -182,6 +182,39 @@ def quasi_newton_bvp_dense(x, resid, jac_prev, jac, max_qn_iter=100, max_newton_
 
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_bvp_dense(x, resid, jac_prev, jac, max_newton_iter, tol, args), x)
 
+@partial(jax.jit, static_argnums=(1, 3, 4, 5, 6))
+def quasi_newton_bvp_dense_symm(x, resid, jac_prev, jac, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=()):
+
+    J = jac(x, *args)
+    u = np.linalg.qr(jac_prev.todense().T)[1]
+    dx = jac_prev.vjp(jax.scipy.linalg.cho_solve((u, False), -resid(x, *args)))
+    x = x + dx
+    v = jac_prev.vjp(jax.scipy.linalg.cho_solve((u, False), -resid(x, *args)))
+    projection2 = v.T@dx / (dx@dx)
+    contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+    dx_prev = dx
+    dx = v / (1 - projection2)
+
+    def cond1(carry):
+        x, step, dx_prev, dx, projection2, contraction_factor = carry
+        return (step < max_qn_iter) & np.any(np.abs(dx) > tol) & (contraction_factor < 0.5)
+
+    def loop1(carry):
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
+        x = x + dx
+        v = jac_prev.vjp(jax.scipy.linalg.cho_solve((u, False), -resid(x, *args)))
+        projection1 = v.T@dx_prev / (dx_prev@dx_prev)
+        v = v + projection1 * dx
+        projection2 = v.T@dx / (dx@dx)
+        contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+        dx_prev = dx
+        dx = v / (1 - projection2)
+        return x, step + 1, dx, dx_prev, projection2, contraction_factor
+
+    x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
+
+    return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_bvp_dense(x, resid, jac_prev, jac, max_newton_iter, tol, args), x)
+
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=()):
 
