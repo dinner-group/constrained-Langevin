@@ -56,7 +56,7 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, max_qn_iter=100, max_newto
     lu = jax.scipy.linalg.lu_factor(J@jac_prev.T)
     dx = jac_prev.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
     x = x + dx
-    v = dx
+    v = jac_prev.T@jax.scipy.linalg.lu_solve(lu, -resid(x, *args))
     projection2 = v.T@dx / (dx@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
