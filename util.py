@@ -207,7 +207,7 @@ class BVPJac:
                              Jy1Jy2T, 
                              [np.pad(np.hstack([J1.Jy[-1, :, :J1.n_dim]@J2.Jy[-2, :, -J1.n_dim:].T, J1.Jy[-1]@J2.Jy[-1].T]), ((0, 0), (0, J1.Jy.shape[1])))]])
         
-        J1J2T = np.pad(np.vstack(J1.Jk)@np.vstack(J2.Jk).T, ((0, 2), (0, 2)))
+        J1J2T = np.pad(np.vstack(J1.Jk)@np.vstack(J2.Jk).T, ((0, J1.n_dim), (0, J2.n_dim)))
         
         def loop2(carry, _):
             i, J1J2T = carry
