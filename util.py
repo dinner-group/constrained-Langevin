@@ -114,6 +114,7 @@ class BVPJac:
         self.n_dim = n_dim
         self.n_par = n_par
         self.n_mesh_intervals = n_mesh_intervals
+        self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim, Jy.shape[0] * Jy.shape[1] + n_dim + Jk.shape[2]))
 
         if Jbc_left is None:
             self.Jbc_left = -np.identity(n_dim)
@@ -142,39 +143,54 @@ class BVPJac:
         return np.hstack([Jk[:, :self.n_par], Jy_dense, Jk[:, self.n_par:]])
 
     @jax.jit
-    def vjp(self, v):
-        
-        out = np.zeros(self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jk.shape[2])
-        out = out.at[:self.n_par].set(v[:-self.n_dim]@np.vstack(self.Jk[:, :, :self.n_par]))
-        out = out.at[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:].set(v[:-self.n_dim]@np.vstack(self.Jk[:, :, self.n_par:]))
-        out = out.at[self.n_par:self.n_par + self.n_dim].set(self.Jbc_left@v[-self.n_dim:])
-        out = out.at[self.n_par + self.Jy.shape[0] * self.Jy.shape[1]:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim].set(self.Jbc_right@v[-self.n_dim:])
+    def left_multiply(self, v):
+    
+        if len(v.shape) == 1:
+            v = np.expand_dims(v, 0)
+
+        out = np.zeros((v.shape[0], self.shape[1]))
+        out = out.at[:, :self.n_par].set(v[:, :-self.n_dim]@np.vstack(self.Jk[:, :, :self.n_par]))
+        out = out.at[:, self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:].set(v[:, :-self.n_dim]@np.vstack(self.Jk[:, :, self.n_par:]))
+        out = out.at[:, self.n_par:self.n_par + self.n_dim].set(v[:, -self.n_dim:]@self.Jbc_left)
+        out = out.at[:, self.n_par + self.Jy.shape[0] * self.Jy.shape[1]:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim].set(v[:, -self.n_dim:]@self.Jbc_right)
         
         def loop_body(carry, _):
             i, out = carry
-            outi = jax.lax.dynamic_slice(out, (self.n_par + i * self.Jy.shape[1],), (self.Jy.shape[2],))
-            vi = jax.lax.dynamic_slice(v, (i * self.Jy.shape[1],), (self.Jy.shape[1],))
-            out = jax.lax.dynamic_update_slice(out, outi + vi@self.Jy[i], (self.n_par + i * self.Jy.shape[1],))
+            outi = jax.lax.dynamic_slice(out, (0, self.n_par + i * self.Jy.shape[1]), (out.shape[0], self.Jy.shape[2]))
+            vi = jax.lax.dynamic_slice(v, (0, i * self.Jy.shape[1]), (v.shape[0], self.Jy.shape[1]))
+            out = jax.lax.dynamic_update_slice(out, outi + vi@self.Jy[i], (0, self.n_par + i * self.Jy.shape[1]))
             return (i + 1, out), _
-        
-        return jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
+
+        out = jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
+
+        if out.shape[0] == 1:
+            out = out.ravel()
+
+        return out
    
     @jax.jit
-    def jvp(self, v):
+    def right_multiply(self, v):
         
+        if len(v.shape) == 1:
+            v = np.expand_dims(v, 1)
+
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:]])
-        out = np.pad(np.vstack(self.Jk)@vk, (0, self.n_dim))
+        out = np.pad(np.vstack(self.Jk)@vk, ((0, self.n_dim), (0, 0)))
 
         def loop_body(carry, _):
             i, out = carry
-            outi = jax.lax.dynamic_slice(out, (i * self.Jy.shape[1],), (self.Jy.shape[1],))
-            vyi = jax.lax.dynamic_slice(vy, (i * self.Jy.shape[1],), (self.Jy.shape[2],))
-            out = jax.lax.dynamic_update_slice(out, outi + self.Jy[i]@vyi, (i * self.Jy.shape[1],))
+            outi = jax.lax.dynamic_slice(out, (i * self.Jy.shape[1], 0), (self.Jy.shape[1], out.shape[1]))
+            vyi = jax.lax.dynamic_slice(vy, (i * self.Jy.shape[1], 0), (self.Jy.shape[2], out.shape[1]))
+            out = jax.lax.dynamic_update_slice(out, outi + self.Jy[i]@vyi, (i * self.Jy.shape[1], 0))
             return (i + 1, out), _
 
         out = jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
         out = out.at[-self.n_dim:].add(self.Jbc_left@vy[:self.n_dim] + self.Jbc_right@vy[-self.n_dim:])
+
+        if out.shape[1] == 1:
+            out = out.ravel()
+
         return out
 
     @jax.jit
