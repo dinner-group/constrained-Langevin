@@ -39,10 +39,10 @@ def velocity(momentum, inverse_mass):
     return v
 
 @jax.jit
-def vjp(J, v):
+def left_multiply(J, v):
 
     if isinstance(J, util.BVPJac):
-        return J.vjp(v)
+        return J.left_multiply(v)
     else:
         return v@J
 
@@ -50,7 +50,7 @@ def vjp(J, v):
 def jvp(J, v):
 
     if isinstance(J, util.BVPJac):
-        return J.jvp(v)
+        return J.right_multiply(v)
     else:
         return J@v
 
@@ -72,7 +72,7 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
 
     momentum_new = momentum - dt * force
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
-    momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
+    momentum_new = momentum_new - left_multiply(proj[0], lagrange_multiplier_new)
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, proj, args
 
@@ -114,7 +114,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 
     proj = cotangency_proj(Jcons, inverse_mass)
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity_new))
-    momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
+    momentum_new = momentum_new - left_multiply(proj[0], lagrange_multiplier_new)
 #    if inverse_mass is None:
 #        momentum_norm = np.linalg.norm(momentum)
 #        momentum_new_norm = np.linalg.norm(momentum_new)
@@ -155,7 +155,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
 
     momentum_new = drag * momentum + W
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity(momentum_new, inverse_mass)))
-    momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
+    momentum_new = momentum_new - left_multiply(proj[0], lagrange_multiplier_new)
 
     return position, momentum_new, lagrange_multiplier_new, key, args
 
