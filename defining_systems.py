@@ -309,7 +309,7 @@ def morris_lecar_bvp_jac(q, mesh_points=np.linspace(0, 1, 61), bounds=None):
         Jw_i = jax.jacfwd(morris_lecar_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
         return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
 
-    J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], model.Morris_Lecar.n_dim, model.Morris_Lecar.n_par, n_mesh_intervals)
+    J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], model.Morris_Lecar.n_dim, model.Morris_Lecar.n_par)
     return J
 
 @partial(jax.jit, static_argnums=(1,))
