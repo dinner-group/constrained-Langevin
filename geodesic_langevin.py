@@ -86,21 +86,8 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         Jcons = jac_constraint(position, *args)
         proj = cotangency_proj(Jcons, inverse_mass)
 
-    if isinstance(proj[0], util.BVPJac):
-        if inverse_mass is None:
-            jac_prevM = proj[0]
-        else:
-            jac_prevM = proj[0].right_multiply_diag(inverse_mass)
-    else:
-        if inverse_mass is None:
-            jac_prevM = proj[0]
-        elif len(inverse_mass.shape) == 1:
-            jac_prevM = proj[0] * inverse_mass
-        else:
-            jac_prevM = proj[0]@inverse_mass
-
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, args, success = nlsol(position_new, constraint, jac_prevM, jac_constraint, max_newton_iter, tol, args=args)
+    position_new, args, success = nlsol(position_new, constraint, proj[0], jac_constraint, inverse_mass, max_newton_iter, tol, args=args)
     Jcons = jac_constraint(position_new, *args)
     velocity_new = (position_new - position) / dt
 
@@ -115,17 +102,6 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     proj = cotangency_proj(Jcons, inverse_mass)
     lagrange_multiplier_new = jax.scipy.linalg.cho_solve((proj[1], False), jvp(proj[0], velocity_new))
     momentum_new = momentum_new - vjp(proj[0], lagrange_multiplier_new)
-#    if inverse_mass is None:
-#        momentum_norm = np.linalg.norm(momentum)
-#        momentum_new_norm = np.linalg.norm(momentum_new)
-#    elif len(inverse_mass.shape) == 1:
-#        momentum_norm = np.sqrt(momentum@(inverse_mass * momentum))
-#        momentum_new_norm = np.linalg.norm(momentum_new@(inverse_mass * momentum_new))
-#    else:
-#        momentum_norm = np.sqrt(momentum@inverse_mass@momentum)
-#        momentum_new_norm = np.sqrt(momentum_new@inverse_mass@momentum_new)
-#
-#    momentum_new = momentum_new * momentum_norm / momentum_new_norm
 
     return position_new, momentum_new, lagrange_multiplier_new, proj, args, success
 
