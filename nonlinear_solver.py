@@ -242,7 +242,6 @@ def quasi_newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_qn_it
         return x, step + 1, dx, dx_prev, projection2, contraction_factor
 
     x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
-    jax.debug.print("{}", step)
 
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, args), x)
 
@@ -290,7 +289,6 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
 
     init = (x, 0, np.full_like(x, np.inf))
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
-    jax.debug.print("{}", n_iter)
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
