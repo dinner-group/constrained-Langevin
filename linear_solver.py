@@ -5,6 +5,10 @@ import jax.experimental.sparse
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
+@jax.jit
+def qr_cholesky():
+    return
+
 class LinSolColloc():
 
     def __init__(self, J, n_dim, n_mesh_point, n_colloc_point, n_par, n_coeff, **kwargs):
