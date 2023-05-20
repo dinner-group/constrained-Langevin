@@ -226,7 +226,7 @@ def quasi_newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_qn_it
     dx = v / (1 - projection2)
 
     def cond1(carry):
-        x, step, dx_prev, dx, projection2, contraction_factor = carry
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
         return (step < max_qn_iter) & np.any(np.abs(dx) > tol) & (contraction_factor < 0.5)
 
     def loop1(carry):
@@ -241,8 +241,7 @@ def quasi_newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_qn_it
         dx = v / (1 - projection2)
         return x, step + 1, dx, dx_prev, projection2, contraction_factor
 
-    x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
-
+    x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, args), x)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
@@ -289,6 +288,67 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
 
     init = (x, 0, np.full_like(x, np.inf))
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
+    return x, args, np.all(np.abs(dx) < tol)
+
+@partial(jax.jit, static_argnums=(1, 3, 5, 6))
+def quasi_newton_bvp_symm_1(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
+    
+    if inverse_mass is None:
+        jac_prev_sqrtM = jac_prev
+    elif len(inverse_mass.shape) == 1:
+        sqrtMinv = np.sqrt(inverse_mass)
+        jac_prev_sqrtM = jac_prev.right_multiply_diag(sqrtMinv)
+    else:
+        sqrtMinv = np.linalg.cholesky(inverse_mass)
+        jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
+
+    J_LQ = jac_prev_sqrtM.LQ_factor()
+    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
+    E = J_LQ.solve_triangular_L(Jk)
+    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+
+    def lstsq(b):
+        w = J_LQ.solve_triangular_L(b)
+        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
+        u = w - Q1[Jk.shape[1]:]@(Q1[Jk.shape[1]:].T@w)
+        t = J_LQ.solve_triangular_R(u)
+        out_y = jac_prev_sqrtM.left_multiply(t)[jac_prev_sqrtM.n_par:-1]
+        out = np.concatenate([out_k[:jac_prev_sqrtM.n_par], out_y, out_k[-1:]])
+
+        if inverse_mass is not None:
+            if len(inverse_mass.shape) == 1:
+                out = sqrtMinv * out
+            else:
+                out = sqrtMinv@out
+
+        return out
+
+    dx = lstsq(-resid(x, *args))
+    x = x + dx
+    v = lstsq(-resid(x, *args))
+    projection2 = v.T@dx / (dx.T@dx)
+    contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+    dx_prev = dx
+    dx = v / (1 - projection2)
+
+    def cond(carry):
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
+        x = x + dx
+        v = lstsq(-resid(x, *args))
+        projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
+        v = v + projection1 * dx
+        projection2 = v.T@dx / (dx.T@dx)
+        contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+        dx_prev = dx
+        dx = v / (1 - projection2)
+        return x, step + 1, dx, dx_prev, projection2, contraction_factor
+
+    init = (x, 1, dx, dx_prev, projection2, contraction_factor)
+    x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
