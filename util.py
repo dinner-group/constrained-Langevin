@@ -242,7 +242,7 @@ class BVPJac:
         return J1J2T
 
     @jax.jit
-    def LQ_factor(self):
+    def lq_factor(self):
 
         Q_c = np.zeros((self.Jy.shape[0], self.Jy.shape[2], self.Jy.shape[2]))
         R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))

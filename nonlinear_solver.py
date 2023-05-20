@@ -256,7 +256,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
         sqrtMinv = np.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
 
-    J_LQ = jac_prev_sqrtM.LQ_factor()
+    J_LQ = jac_prev_sqrtM.lq_factor()
     Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
@@ -302,7 +302,7 @@ def quasi_newton_bvp_symm_1(x, resid, jac_prev, jac, inverse_mass=None, max_iter
         sqrtMinv = np.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
 
-    J_LQ = jac_prev_sqrtM.LQ_factor()
+    J_LQ = jac_prev_sqrtM.lq_factor()
     Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
