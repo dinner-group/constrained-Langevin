@@ -47,10 +47,10 @@ def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
             J_and_factor = (J, np.linalg.qr(J.todense().T)[1])
         elif len(inverse_mass.shape) == 1:
             sqrtMinv = np.sqrt(inverse_mass)
-            J_and_factor = (J, np.linalg.qr(J.right_multiply_diag(sqrtMinv)).todense()[1])
+            J_and_factor = (J, np.linalg.qr(J.right_multiply_diag(sqrtMinv).todense().T)[1])
         else:
             sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
-            J_and_factor = (J, np.linalg.qr(J.right_multiply(sqrtMinv))[1])
+            J_and_factor = (J, np.linalg.qr(J.right_multiply(sqrtMinv).T)[1])
             
     if inverse_mass is None:
         Minvb = b
