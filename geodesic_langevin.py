@@ -100,7 +100,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         R = jax.scipy.linalg.cholesky(inverse_mass)
         momentum_new = jax.scipy.linalg.cho_solve((R, False), velocity_new)
 
-    momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor=None, inverse_mass)
+    momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, None, inverse_mass)
 
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor, args, success
 
