@@ -63,13 +63,12 @@ def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, 
         jac = jax.jacfwd(resid)
 
     if inverse_mass is None:
-        jac_prevM = jac_prev
         jac_prev_sqrtM = jac_prev
     elif len(inverse_mass.shape) == 1:
-        jac_prevM = jac_prev * inverse_mass
-        jac_prev_sqrtM = jac_prev * np.sqrt(inverse_mass)
+        sqrtMinv = np.sqrt(inverse_mass)
+        jac_prev_sqrtM = jac_prev * sqrtMinv
     else:
-        jac_prevM = jac_prev@inverse_mass
+        sqrtMinv = np.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
 
     Q, R = np.linalg.qr(jac_prev_sqrtM.T)
@@ -84,9 +83,9 @@ def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, 
 
         if inverse_mass is not None:
             if len(inverse_mass.shape) == 1:
-                dx = jac_prev_sqrtM * dx
+                dx = sqrtMinv * dx
             else:
-                dx = jac_prev_sqrtM@dx
+                dx = sqrtMinv@dx
 
         return x + dx, step + 1, dx
 
