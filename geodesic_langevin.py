@@ -83,11 +83,14 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
+
+    if J_and_factor is None:
+        Jcons = jac_constraint(position)
     else:
         Jcons = J_and_factor[0]
     
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, args, success = nlsol(position_new, constraint, J_and_factor[0], jac_constraint, inverse_mass, max_newton_iter, tol, args=args)
+    position_new, args, success = nlsol(position_new, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, tol, args=args)
     Jcons = jac_constraint(position_new, *args)
     velocity_new = (position_new - position) / dt
 
