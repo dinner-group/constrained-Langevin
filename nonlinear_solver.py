@@ -68,8 +68,8 @@ def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, 
         sqrtMinv = np.sqrt(inverse_mass)
         jac_prev_sqrtM = jac_prev * sqrtMinv
     else:
-        sqrtMinv = np.linalg.cholesky(inverse_mass)
-        jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
+        sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
+        jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
     Q, R = np.linalg.qr(jac_prev_sqrtM.T)
 
@@ -150,7 +150,7 @@ def quasi_newton_rattle_symm(x, resid, jac_prev, jac=None, inverse_mass=None, ma
         jac_prev_sqrtM = jac_prev * np.sqrt(inverse_mass)
     else:
         jac_prevM = jac_prev@inverse_mass
-        jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
+        jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
     J = jac(x, *args)
     R = np.linalg.qr(jac_prev_sqrtM.T)[1]
@@ -252,8 +252,8 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
         sqrtMinv = np.sqrt(inverse_mass)
         jac_prev_sqrtM = jac_prev.right_multiply_diag(sqrtMinv)
     else:
-        sqrtMinv = np.linalg.cholesky(inverse_mass)
-        jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
+        sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
+        jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
     J_LQ = jac_prev_sqrtM.lq_factor()
     Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
@@ -298,8 +298,8 @@ def quasi_newton_bvp_symm_1(x, resid, jac_prev, jac, inverse_mass=None, max_iter
         sqrtMinv = np.sqrt(inverse_mass)
         jac_prev_sqrtM = jac_prev.right_multiply_diag(sqrtMinv)
     else:
-        sqrtMinv = np.linalg.cholesky(inverse_mass)
-        jac_prev_sqrtM = jac_prev@np.linalg.cholesky(inverse_mass)
+        sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
+        jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
     J_LQ = jac_prev_sqrtM.lq_factor()
     Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
