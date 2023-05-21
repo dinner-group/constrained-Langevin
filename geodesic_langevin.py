@@ -132,7 +132,6 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
 
     momentum_new = drag * momentum + W
-    jax.debug.print("{}", momentum_new)
     momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor, inverse_mass)
 
     return position, momentum_new, lagrange_multiplier_new, key, args
