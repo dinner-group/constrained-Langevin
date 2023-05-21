@@ -70,7 +70,8 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
 
     if J_and_factor is None:
         Jcons = jac_constraint(position, *args)
-        J_and_factor = cotangency_proj(Jcons, inverse_mass)
+    else:
+        Jcons = J_and_factor[0]
 
     momentum_new = momentum - dt * force
     momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor, inverse_mass)
@@ -82,11 +83,9 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
+    else:
+        Jcons = J_and_factor[0]
     
-    if J_and_factor is None:
-        Jcons = jac_constraint(position, *args)
-        J_and_factor = cotangency_proj(Jcons, inverse_mass)
-
     position_new = position + dt * velocity(momentum, inverse_mass)
     position_new, args, success = nlsol(position_new, constraint, J_and_factor[0], jac_constraint, inverse_mass, max_newton_iter, tol, args=args)
     Jcons = jac_constraint(position_new, *args)
@@ -111,8 +110,9 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         jac_constraint = jax.jacfwd(constraint)
     
     if J_and_factor is None:
-        Jcons = jac_constraint(position, *args)
-        J_and_factor = cotangency_proj(Jcons, inverse_mass)
+        Jcons = jac_constraint(position)
+    else:
+        Jcons = J_and_factor[0]
 
     drag = np.exp(-friction * dt)
     noise_scale = np.sqrt(temperature * (1 - drag**2))
@@ -129,7 +129,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
 
     momentum_new = drag * momentum + W
-    mometnum_new, lagrange_multiplier_new, J_and_factor = linsol(J_cons, momentum_new, J_and_factor, inverse_mass)
+    mometnum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor, inverse_mass)
 
     return position, momentum_new, lagrange_multiplier_new, key, args
 
@@ -146,7 +146,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         force = jax.jacfwd(potential)(position, *args)
 
     Jcons = jac_constraint(position, *args)
-    J_and_factor = cotangency_proj(Jcons, inverse_mass)
+    _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
     args_size = 0
 
     if len(args) > 0:
@@ -164,11 +164,11 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         
         i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = carry
 
-        position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy, force, J_and_factor, args)
-        position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, max_newton_iter, tol)
-        position, momentum, _, prng_key, args = O(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, temperature)
-        position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, max_newton_iter, tol)
-        position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor=J_and_factor, args=args)
+        position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy, force, J_and_factor, args, linsol)
+        position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
+        position, momentum, _, prng_key, args = O(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, linsol, temperature)
+        position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
+        position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor=J_and_factor, args=args, linsol=linsol)
         
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
 
