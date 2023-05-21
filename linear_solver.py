@@ -71,7 +71,7 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
         JsqrtMinv = J
     elif len(inverse_mass.shape) == 1:
         sqrtMinv = np.sqrt(inverse_mass)
-        JsqrtMinv = J.right_multiply(diag(sqrtMinv))
+        JsqrtMinv = J.right_multiply_diag(sqrtMinv)
     else:
         return qr_lstsq_rattle_bvp_dense(J, b, J_and_factor, inverse_mass)
 
