@@ -21,11 +21,12 @@ def qr_lstsq_rattle(J, b, J_and_factor=None, inverse_mass=None):
     Q, R = J_and_factor[1]
     sqrtMinv = J_and_factor[2]
 
-    if inverse_mass is not None:
-        if len(sqrtMinv.shape) == 1:
-            sqrtMinvb = b * sqrtMinv
-        else:
-            sqrtMinvb = sqrtMinv@b
+    if inverse_mass is None:
+        sqrtMinvb = b
+    elif len(sqrtMinv.shape) == 1:
+        sqrtMinvb = b * sqrtMinv
+    else:
+        sqrtMinvb = sqrtMinv@b
 
     b_proj_coeff = Q.T@sqrtMinvb
     b_proj = Q@b_proj_coeff
