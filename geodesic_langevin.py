@@ -2,6 +2,7 @@ import jax
 import jax.numpy as np
 import numpy
 import nonlinear_solver
+import linear_solver
 import util
 from functools import partial
 jax.config.update("jax_enable_x64", True)
@@ -22,7 +23,7 @@ def cotangency_proj(Jcons, inverse_mass):
         elif len(inverse_mass.shape) == 1:
             QR = np.linalg.qr((np.sqrt(inverse_mass) * Jcons).T)
         else:
-            sqrtMinv = np.linalg.cholesky(inverse_mass)
+            sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
             QR = np.linalg.qr((sqrtMinv@Jcons).T)
 
     return Jcons, QR
@@ -56,7 +57,7 @@ def jvp(J, v):
         return J@v
 
 @partial(jax.jit, static_argnums=(3, 4, 5, 11))
-def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, J_and_factor=None, args=(), linsol=linear_solver.qr_cholesky):
+def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, J_and_factor=None, args=(), linsol=linear_solver.qr_lstsq_rattle):
 
     if energy is None:
         energy = potential(position, *args)
@@ -72,13 +73,12 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
         J_and_factor = cotangency_proj(Jcons, inverse_mass)
 
     momentum_new = momentum - dt * force
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((J_and_factor[1][1], False), jvp(J_and_factor[0], velocity(momentum_new, inverse_mass)))
-    momentum_new = momentum_new - vjp(J_and_factor[0], lagrange_multiplier_new)
+    momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor, inverse_mass)
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, J_and_factor, args
 
 @partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12, 13))
-def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_cholesky, max_newton_iter=20, tol=1e-9):
+def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
@@ -100,14 +100,12 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         R = jax.scipy.linalg.cholesky(inverse_mass)
         momentum_new = jax.scipy.linalg.cho_solve((R, False), velocity_new)
 
-    J_and_factor = cotangency_proj(Jcons, inverse_mass)
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((J_and_factor[1][1], False), jvp(J_and_factor[0], velocity_new))
-    momentum_new = momentum_new - vjp(J_and_factor[0], lagrange_multiplier_new)
+    momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor=None, inverse_mass)
 
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor, args, success
 
 @partial(jax.jit, static_argnums=(5, 6, 7, 11))
-def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, args=(), linsol=linear_solver.qr_cholesky, temperature=1):
+def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, args=(), linsol=linear_solver.qr_lstsq_rattle, temperature=1):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
@@ -131,13 +129,12 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
 
     momentum_new = drag * momentum + W
-    lagrange_multiplier_new = jax.scipy.linalg.cho_solve((J_and_factor[1][1], False), jvp(J_and_factor[0], velocity(momentum_new, inverse_mass)))
-    momentum_new = momentum_new - vjp(J_and_factor[0], lagrange_multiplier_new)
+    mometnum_new, lagrange_multiplier_new, J_and_factor = linsol(J_cons, momentum_new, J_and_factor, inverse_mass)
 
     return position, momentum_new, lagrange_multiplier_new, key, args
 
 @partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22))
-def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_cholesky, max_newton_iter=20, tol=1e-9):
+def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)

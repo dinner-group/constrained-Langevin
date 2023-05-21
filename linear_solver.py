@@ -6,8 +6,66 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @jax.jit
-def qr_cholesky():
-    return
+def qr_lstsq_rattle(J, b, J_and_factor=None, inverse_mass=None):
+
+    if J_and_factor is None:
+        if inverse_mass is None:
+            J_and_factor = (J, np.linalg.qr(J.T), None)
+        elif len(inverse_mass.shape) == 1:
+            sqrtMinv = np.sqrt(inverse_mass)
+            J_and_factor = (J, np.linalg.qr((sqrtMinv * J).T), sqrtMinv)
+        else:
+            sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
+            J_and_factor = (J, np.linalg.qr((J@sqrtMinv).T), sqrtMinv)
+
+    Q, R = J_and_factor[1]
+    sqrtMinv = J_and_factor[2]
+
+    if inverse_mass is not None:
+        if len(sqrtMinv.shape) == 1:
+            b = b * sqrtMinv
+        else:
+            b = sqrtMinv@b
+
+    b_proj_coeff = Q.T@b
+    b_proj = Q@b_proj_coeff
+
+    if sqrtMinv is not None:
+        if len(sqrtMinv.shape) == 1:
+            b_proj = b_proj / sqrtMinv
+        else:
+            b_proj = jax.scipy.linalg.solve_triangular(sqrtMinv, b_proj, lower=False)
+
+    return b - b_proj, b_proj_coeff, J_and_factor
+
+@jax.jit
+def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
+
+    if J_and_factor is None:
+        if inverse_mass is None:
+            J_and_factor = (J, np.linalg.qr(J.todense().T)[1])
+        elif len(inverse_mass.shape) == 1:
+            sqrtMinv = np.sqrt(inverse_mass)
+            J_and_factor = (J, np.linalg.qr(J.right_multiply_diag(sqrtMinv)).todense()[1])
+        else:
+            sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
+            J_and_factor = (J, np.linalg.qr(J.right_multiply(sqrtMinv))[1])
+            
+    if inverse_mass is None:
+        Minvb = b
+    elif len(inverse_mass.shape) == 1:
+        Minvb = b * inverse_mass
+    else:
+        Minvb = inverse_mass@b
+
+    R = J_and_factor[1]
+    b_proj_coeff = jax.scipy.linalg.cho_solve((R, False), J.right_multiply(Minvb))
+
+    return b - J.right_left_multiply(b_proj_coeff), b_proj_coeff, J_and_factor
+
+@jax.jit
+def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
+    pass
 
 class LinSolColloc():
 
