@@ -62,7 +62,7 @@ def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
     R = J_and_factor[1]
     b_proj_coeff = jax.scipy.linalg.cho_solve((R, False), J.right_multiply(Minvb))
 
-    return b - J.right_left_multiply(b_proj_coeff), b_proj_coeff, J_and_factor
+    return b - J.left_multiply(b_proj_coeff), b_proj_coeff, J_and_factor
 
 @jax.jit
 def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):

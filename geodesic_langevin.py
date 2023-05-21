@@ -85,7 +85,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         jac_constraint = jax.jacfwd(constraint)
 
     if J_and_factor is None:
-        Jcons = jac_constraint(position)
+        Jcons = jac_constraint(position, *args)
     else:
         Jcons = J_and_factor[0]
     
@@ -113,7 +113,7 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         jac_constraint = jax.jacfwd(constraint)
     
     if J_and_factor is None:
-        Jcons = jac_constraint(position)
+        Jcons = jac_constraint(position, *args)
     else:
         Jcons = J_and_factor[0]
 
