@@ -66,7 +66,39 @@ def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
 
 @jax.jit
 def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
-    pass
+
+    if inverse_mass is None:
+        JsqrtMinv = J
+    elif len(inverse_mass.shape) == 1:
+        sqrtMinv = np.sqrt(inverse_mass)
+        JsqrtMinv = J.right_multiply(diag(sqrtMinv))
+    else:
+        return qr_lstsq_rattle_bvp_dense(J, b, J_and_factor, inverse_mass)
+
+    if J_and_factor is None:
+        J_and_factor = (J, JsqrtMinv.lq_factor())
+
+    J_LQ = J_and_factor[1]
+    Jk = np.pad(np.vstack(JsqrtMinv.Jk), ((0, JsqrtMinv.n_dim), (0, 0)))
+    E = J_LQ.solve_triangular_L(Jk)
+    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+
+    def lstsq(b):
+        w = J_LQ.solve_triangular_L(b)
+        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
+        u = w - Q1[Jk.shape[1]:]@(Q1[Jk.shape[1]:].T@w)
+        t = J_LQ.solve_triangular_R(u)
+        out_y = JsqrtMinv.left_multiply(t)[JsqrtMinv.n_par:-1]
+        out = np.concatenate([out_k[:JsqrtMinv.n_par], out_y, out_k[-1:]])
+
+        if inverse_mass is not None:
+            out = out / sqrtMinv
+
+        return out, t
+
+    JMinvb = JsqrtMinv.right_multiply(b)
+    out = lstsq(JMinvb)
+    return b - out[0], out[1], J_and_factor
 
 class LinSolColloc():
 
