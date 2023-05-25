@@ -7,6 +7,74 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @jax.jit
+def fully_extended_hopf(q, ode_model):
+    
+    k = q[:ode_model.n_par]
+    y = q[ode_model.n_par:ode_model.n_par + ode_model.n_dim]
+    evec_real = q[ode_model.n_par + ode_model.n_dim:ode_model.n_par + 2 * ode_model.n_dim]
+    evec_imag = q[ode_model.n_par + 2 * ode_model.n_dim:ode_model.n_par + 3 * ode_model.n_dim]
+    eval_imag = q[ode_model.n_par + 3 * ode_model.n_dim]
+    
+    ode_rhs = ode_model.f(0., y, k)
+    jac = jax.jacfwd(ode_model.f, argnums=1)(0., y, k)
+    evec_abs = evec_real**2 + evec_imag**2
+    
+    return np.concatenate([ode_rhs,
+                           jac@evec_real + eval_imag * evec_imag,
+                           jac@evec_imag - eval_imag * evec_real,
+                           np.array([evec_abs.sum() - 1]),
+                           np.array([evec_imag[0]])])
+
+@jax.jit
+def periodic_bvp_colloc_resid_interval(y, k, period, colloc_points, node_points, ode_model):
+
+    dd = util.divided_difference(node_points, y)
+    poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
+    poly = jax.vmap(poly_interval)(colloc_points)
+    poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
+    return np.ravel(poly_deriv - jax.vmap(lambda yy:period * ode_model.f(0., yy, k))(poly), order="C")
+
+@jax.jit
+def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61)):
+
+    n_mesh_intervals = mesh_points.size - 1
+    k = q[:ode_model.n_par]
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
+    period = q[ode_model.n_par + n_points * ode_model.n_dim]
+
+    def loop_body(i, _):
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (ode_model.n_dim, util.gauss_points.size + 1))
+        r_i = periodic_bvp_colloc_f_interval(y_i, k, period, colloc_points, node_points, ode_model)
+        return i + 1, r_i
+
+    colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
+    return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0]])
+
+@jax.jit
+def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61)):
+
+    n_mesh_intervals = mesh_points.size - 1
+    k = q[:ode_model.n_par]
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
+    period = q[ode_model.n_par + n_points * ode_model.n_dim]
+
+    def loop_body(i, _):
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (ode_model.n_dim, util.gauss_points.size + 1))
+        Jy_i = jax.jacfwd(periodic_bvp_colloc_f_interval, argnums=0)(y_i, k, period, colloc_points, node_points, ode_model).reshape((util.gauss_points.size * ode_model.n_dim, (util.gauss_points.size + 1) * ode_model.n_dim), order="F")
+        Jk_i = jax.jacfwd(periodic_bvp_colloc_f_interval, argnums=1)(y_i, k, period, colloc_points, node_points, ode_model)
+        Jw_i = jax.jacfwd(periodic_bvp_colloc_f_interval, argnums=2)(y_i, k, period, colloc_points, node_points, ode_model)
+        return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
+
+    J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], ode_model.n_dim, ode_model.n_par)
+    return J
+
+@jax.jit
 def quadratic_roots_potential(position):
     E = 0
     E += np.where(np.abs(position[0]) > 10, 100 * (np.abs(position[0]) - 10)**2, 0)
@@ -160,12 +228,12 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     return E
 
 @jax.jit
-def brusselator_log_bvp_interval(y, k, period, colloc_points, node_points):
-
-    @jax.jit
-    def brusselator_log(y, k):
-        return np.array([np.exp(-y[0]) + k[0] * np.exp(y[0] + y[1]) - k[1] - k[2],
+def brusselator_log(y, k):
+    return np.array([np.exp(-y[0]) + k[0] * np.exp(y[0] + y[1]) - k[1] - k[2],
                      -k[0] * np.exp(2 * y[0]) + k[1] * np.exp(y[0] - y[1])])
+
+@jax.jit
+def brusselator_log_bvp_interval(y, k, period, colloc_points, node_points):
 
     dd = util.divided_difference(node_points, y)
     poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
@@ -355,3 +423,4 @@ def brusselator_bvp_fourier_potential(q, fft_points=500):
     E += np.where(util.smooth_max(curvature, smooth_max_temperature=6) > max_curvature, (util.smooth_max(curvature, smooth_max_temperature=6) - max_curvature)**2, 0)
     
     return E
+
