@@ -174,7 +174,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     args_size = 0
 
     if len(args) > 0:
-        args_flatten = np.concatenate(tuple(np.ravel(x) for x in args))
+        args_flatten = np.concatenate(tuple(x.ravel() for x in args))
         args_size = args_flatten.size
 
     out = np.full((n_steps // thin, position.size + momentum.size + lagrange_multiplier.size + 1 + force.size + args_size), np.nan)
@@ -197,7 +197,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
 
         if(args_size > 0):
-            args_flatten = np.concatenate(tuple(np.ravel(x) for x in args))
+            args_flatten = np.concatenate(tuple(x.ravel() for x in args))
             out_step = np.concatenate([out_step, args_flatten])
         
         out = jax.lax.dynamic_update_slice(out, np.expand_dims(out_step, 0), (i // thin, 0))
