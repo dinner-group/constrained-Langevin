@@ -124,7 +124,7 @@ def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, 
     constraint_args = list(constraint_args)
     constraint_args[1] = mesh_new
     constraint_args = tuple(constraint_args)
-    return lgvn.rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, 
+    return rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, 
                              constraint_args, nlsol, linsol, max_newton_iter, tol)
 
 @partial(jax.jit, static_argnums=(5, 6, 7, 11))
