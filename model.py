@@ -356,6 +356,10 @@ class KaiODE:
 
         return jax.jacfwd(self.f_dae, argnums=1)(t, y, reaction_consts, a0, c0, ATPfrac)
 
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
     def _tree_flatten(self):
 
         children = (self.reaction_consts, self.a0, self.c0, self.ATPfrac, self.S, self.K)
@@ -400,6 +404,10 @@ class Brusselator:
     def jac(self, t, y, reaction_consts=None):
         return jax.jacfwd(self.f, argnums=1)(t, y, reaction_consts)
 
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
     def _tree_flatten(self):
 
         children = (self.reaction_consts,)
@@ -437,6 +445,10 @@ class Repressilator_log:
     def jac(self, t, y, par=None):
         return jax.jacfwd(self.f, argnums=1)(t, y, par)
 
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
     def _tree_flatten(self):
         children = (self.par,)
         aux_data = {}
@@ -473,6 +485,10 @@ class Morris_Lecar:
     @jax.jit
     def jac(self, t, y, par=None):
         return jax.jacfwd(self.f, argnums=1)(t, y, par)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
 
     def _tree_flatten(self):
         children = (self.par,)
@@ -556,6 +572,10 @@ class Pharyngeal_Minimal_Syn:
             par = self.par
 
         return jax.jacfwd(self.f, argnums=1)(t, y, par)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
 
     def _tree_flatten(self):
         children = (self.par,)
