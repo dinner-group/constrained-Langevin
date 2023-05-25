@@ -106,6 +106,27 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor, args, success
 
+@partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12, 13))
+def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, 
+                        constraint_args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9):
+    
+    mesh_points = constraint_args[1]
+    ode_model = constraint_args[0]
+    y = position[ode_model.n_par:-1]
+    y = y.reshape((ode_model.n_dim, y.size // ode_model.n_dim), order="F")
+    yp = momentum[ode_model.n_par:-1]
+    yp = yp.reshape((ode_model.n_dim, yp.size // ode_model.n_dim), order="F")
+    mesh_new, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
+    y_new = util.interpolate(y, mesh_points, mesh_new, util.gauss_points)
+    yp_new = util.interpolate(yp, mesh_points, mesh_new, util.gauss_points)
+    position = position.at[ode_model.n_par:-1].set(y_new.ravel(order="F"))
+    momentum = momentum.at[ode_model.n_par:-1].set(yp_new.ravel(order="F"))
+    constraint_args = list(constraint_args)
+    constraint_args[1] = mesh_new
+    constraint_args = tuple(constraint_args)
+    return lgvn.rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, 
+                             constraint_args, nlsol, linsol, max_newton_iter, tol)
+
 @partial(jax.jit, static_argnums=(5, 6, 7, 11))
 def rattle_noise(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, args=(), linsol=linear_solver.qr_lstsq_rattle, temperature=1):
 
