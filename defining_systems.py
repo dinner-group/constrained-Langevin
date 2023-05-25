@@ -47,7 +47,7 @@ def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61)):
         node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
         colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
         y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (ode_model.n_dim, util.gauss_points.size + 1))
-        r_i = periodic_bvp_colloc_f_interval(y_i, k, period, colloc_points, node_points, ode_model)
+        r_i = periodic_bvp_colloc_resid_interval(y_i, k, period, colloc_points, node_points, ode_model)
         return i + 1, r_i
 
     colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
@@ -66,9 +66,9 @@ def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61)):
         node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
         colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
         y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (ode_model.n_dim, util.gauss_points.size + 1))
-        Jy_i = jax.jacfwd(periodic_bvp_colloc_f_interval, argnums=0)(y_i, k, period, colloc_points, node_points, ode_model).reshape((util.gauss_points.size * ode_model.n_dim, (util.gauss_points.size + 1) * ode_model.n_dim), order="F")
-        Jk_i = jax.jacfwd(periodic_bvp_colloc_f_interval, argnums=1)(y_i, k, period, colloc_points, node_points, ode_model)
-        Jw_i = jax.jacfwd(periodic_bvp_colloc_f_interval, argnums=2)(y_i, k, period, colloc_points, node_points, ode_model)
+        Jy_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=0)(y_i, k, period, colloc_points, node_points, ode_model).reshape((util.gauss_points.size * ode_model.n_dim, (util.gauss_points.size + 1) * ode_model.n_dim), order="F")
+        Jk_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=1)(y_i, k, period, colloc_points, node_points, ode_model)
+        Jw_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=2)(y_i, k, period, colloc_points, node_points, ode_model)
         return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
 
     J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], ode_model.n_dim, ode_model.n_par)
