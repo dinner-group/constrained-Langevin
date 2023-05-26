@@ -424,3 +424,26 @@ def brusselator_bvp_fourier_potential(q, fft_points=500):
     
     return E
 
+@jax.jit
+def repressilator_log_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61)):
+    
+    n_mesh_intervals = mesh_points.size - 1
+    E = 0
+
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    k = q[:ode_model.n_par]
+    y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
+    arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
+    min_arclength = 0.3
+    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
+    mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
+    mesh_density_peak = util.smooth_max(mesh_density, smooth_max_temperature=6)
+
+    E += 100 * np.where(k[-3:] < 0, k[-3:]**2, 0.).sum()
+    E += 100 * np.where(k[-3:] > 5, (k[-3:] - 5)**2, 0.).sum()
+    E += 100 * np.where(k[:-3] > 5, (k[:-3] - 5)**2, 0,).sum()
+    E += 100 * np.where(k[:-3] < -5, (k[:-3] + 5)**2, 0,).sum()
+    E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
+    E += np.where(mesh_density_peak >= 5, (mesh_density_peak - 5)**2, 0)
+
+    return E
