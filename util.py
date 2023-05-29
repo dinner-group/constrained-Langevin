@@ -12,7 +12,7 @@ def smooth_max(x, smooth_max_temperature=1):
     return np.sum(x * np.exp(smooth_max_temperature * x)) / np.sum(np.exp(smooth_max_temperature * x))
 
 @jax.jit
-def fill_mesh(t, gauss_points):
+def fill_mesh(t, gauss_points=gauss_points):
     return np.concatenate([np.ravel(np.expand_dims(t[:-1], 1) + np.expand_dims(t[1:] - t[:-1], 1) * np.linspace(0, 1, gauss_points.size + 1)[:-1]), np.array([1])])
 
 @jax.jit
@@ -87,24 +87,30 @@ def recompute_mesh(y, mesh_old, gauss_points, n_smooth=4):
     return mesh_new, mesh_density
 
 @jax.jit
-def interpolate(y, mesh_old, mesh_new, gauss_points):
+def recompute_node_y(y, mesh_old, mesh_new, gauss_points=gauss_points):
+
+    t_eval = fill_mesh(mesh_new)
+    y_interp = interpolate(t_eval[1:-1])
+    return np.hstack([y[:, :1], y_interp, y[:, -1:]])
+
+@jax.jit
+def interpolate(y, mesh_points, t_eval, gauss_points=gauss_points):
     
     def loop1(i, _):
-        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points.size + 1)
         yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
         return i + 1, divided_difference(meshi, yi)
         
-    dd = jax.lax.scan(loop1, init=0, xs=None, length=mesh_old.size - 1)[1]
+    dd = jax.lax.scan(loop1, init=0, xs=None, length=mesh_points.size - 1)[1]
         
     def loop2(_, t):
-        i = np.searchsorted(mesh_old, t) - 1
-        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
+        i = np.maximum(np.searchsorted(mesh_points, t) - 1, 0)
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points.size + 1)
         yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
         return _, newton_polynomial(t, meshi, yi, dd[i])
     
-    _, y_new = jax.lax.scan(loop2, init=None, xs=fill_mesh(mesh_new, gauss_points)[1:-1])
-    y_new = np.hstack([y[:, :1], y_new.T, y[:, -1:]])
-    return y_new
+    _, y_interp = jax.lax.scan(loop2, init=None, xs=t_eval)
+    return y_interp.T
 
 class BVPJac:
 

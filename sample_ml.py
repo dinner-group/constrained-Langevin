@@ -24,8 +24,8 @@ def rattle_drift_ml_bvp_mm(position, momentum, lagrange_multiplier, dt, potentia
     yp = momentum[model.Morris_Lecar.n_par:-1]
     yp = yp.reshape((model.Morris_Lecar.n_dim, yp.size // model.Morris_Lecar.n_dim), order="F")
     mesh_new, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
-    y_new = util.interpolate(y, mesh_points, mesh_new, util.gauss_points)
-    yp_new = util.interpolate(yp, mesh_points, mesh_new, util.gauss_points)
+    y_new = util.recompute_node_y(y, mesh_points, mesh_new, util.gauss_points)
+    yp_new = util.recompute_node_y(yp, mesh_points, mesh_new, util.gauss_points)
     position = position.at[model.Morris_Lecar.n_par:-1].set(y_new.ravel(order="F"))
     momentum = momentum.at[model.Morris_Lecar.n_par:-1].set(yp_new.ravel(order="F"))
     constraint_args = list(constraint_args)
