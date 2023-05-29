@@ -87,7 +87,7 @@ def recompute_mesh(y, mesh_old, gauss_points, n_smooth=4):
     return mesh_new, mesh_density
 
 @jax.jit
-def interpolate(y, mesh_old, mesh_new, gauss_points):
+def recompute_node_y(y, mesh_old, mesh_new, gauss_points):
     
     def loop1(i, _):
         meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
