@@ -436,9 +436,9 @@ class Repressilator_log:
         if par is None:
             par = self.par
         ydot = np.zeros_like(y)
-        ydot = ydot.at[0].set(np.exp(par[0]) / (np.exp(y[0]) * (1 + np.exp(par[7] * y[2]))) - 1)
-        ydot = ydot.at[1].set(np.exp(par[1]) / (np.exp(y[1]) * (1 + np.exp(par[5] * y[0]))) - np.exp(par[3]))
-        ydot = ydot.at[2].set(np.exp(par[2]) / (np.exp(y[2]) * (1 + np.exp(par[6] * y[1]))) - np.exp(par[4]))
+        ydot = ydot.at[0].set(np.exp(par[0] - y[0]) / (1 + np.exp(par[7] * y[2])) - 1)
+        ydot = ydot.at[1].set(np.exp(par[1] - y[1]) / (1 + np.exp(par[5] * y[0])) - np.exp(par[3]))
+        ydot = ydot.at[2].set(np.exp(par[2] - y[2]) / (1 + np.exp(par[6] * y[1])) - np.exp(par[4]))
         return ydot
 
     @jax.jit
