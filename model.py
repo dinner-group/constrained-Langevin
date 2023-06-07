@@ -427,7 +427,7 @@ class Repressilator_log:
 
     def __init__(self, par=None):
         if par is None:
-            self.par = np.log(np.array([10., 10, 10, 1, 1, 3, 3, 3]))
+            self.par = np.concatenate([np.full(self.n_dim, np.log(10)), np.zeros(self.n_dim - 1), np.full(3, self.n_dim)])
         else:
             self.par = par
 
@@ -464,7 +464,7 @@ class Repressilator_log_n:
         self.n_dim = n_dim
         self.n_par = 3 * n_dim - 1
         if par is None:
-            self.par = np.log(np.concatenate([np.full(n_dim, 10), np.ones(n_dim - 1), np.full(n_dim, 3)]))
+            self.par = np.concatenate([np.full(n_dim, np.log(10)), np.zeros(n_dim - 1), np.full(n_dim, 3)])
         else:
             self.par = par
 
