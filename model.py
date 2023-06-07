@@ -427,7 +427,7 @@ class Repressilator_log:
 
     def __init__(self, par=None):
         if par is None:
-            self.par = np.array([10., 10, 10, 1, 1, 3, 3, 3])
+            self.par = np.log(np.array([10., 10, 10, 1, 1, 3, 3, 3]))
         else:
             self.par = par
 
@@ -452,6 +452,53 @@ class Repressilator_log:
     def _tree_flatten(self):
         children = (self.par,)
         aux_data = {}
+        return children, aux_data
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+class Repressilator_log_n:
+
+    def __init__(self, par=None, n_dim=3):
+        self.n_dim = n_dim
+        self.n_par = 3 * n_dim - 1
+        if par is None:
+            self.par = np.log(np.concatenate([np.full(n_dim, 10), np.ones(n_dim - 1), np.full(n_dim, 3)]))
+        else:
+            self.par = par
+
+    @jax.jit
+    def f(self, t, y, par=None):
+        if par is None:
+            par = self.par
+
+        synthesis_rate = par[:self.n_dim]
+        degrade_rate = np.pad(par[self.n_dim:2 * self.n_dim - 1], (1, 0))
+        hill_coeff = par[2 * self.n_dim - 1:3 * self.n_dim - 1]
+
+        ydot = np.zeros_like(y)
+
+        def loop_body(carry, _):
+            i, ydot = carry
+            ydot = ydot.at[i].set(np.exp(synthesis_rate[i] - y[i]) / (1 + np.exp(hill_coeff * y[i - 1])) - np.exp(degrade_rate[i]))
+            return (i + 1, ydot), _
+
+        ydot = jax.lax.scan(loop_body, init=(0, ydot), xs=None, length=self.n_dim)
+
+        return ydot
+
+    @jax.jit
+    def jac(self, t, y, par=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, par)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
+    def _tree_flatten(self):
+        children = (self.par,)
+        aux_data = {"n_dim":self.n_dim}
         return children, aux_data
 
     @classmethod
@@ -591,3 +638,4 @@ jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Bruss
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log, Repressilator_log._tree_flatten, Repressilator_log._tree_unflatten)
+jax.tree_util.register_pytree_node(Repressilator_log_n, Repressilator_log_n._tree_flatten, Repressilator_log_n._tree_unflatten)
