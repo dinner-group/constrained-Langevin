@@ -481,7 +481,7 @@ class Repressilator_log_n:
 
         def loop_body(carry, _):
             i, ydot = carry
-            ydot = ydot.at[i].set(np.exp(synthesis_rate[i] - y[i]) / (1 + np.exp(hill_coeff * y[i - 1])) - np.exp(degrade_rate[i]))
+            ydot = ydot.at[i].set(np.exp(synthesis_rate[i] - y[i]) / (1 + np.exp(hill_coeff[i - 1] * y[i - 1])) - np.exp(degrade_rate[i]))
             return (i + 1, ydot), _
 
         ydot = jax.lax.scan(loop_body, init=(0, ydot), xs=None, length=self.n_dim)
