@@ -43,7 +43,7 @@ friction = 1e-1
 n_mesh_intervals = 60
 n_points = n_mesh_intervals * util.gauss_points.size + 1
 
-rp = model.Rerpessilator_log_n(n_dim=n_dim)
+rp = model.Repressilator_log_n(n_dim=n_dim)
 x = np.load("repressilator_%d_lc_infer%d.npy"%(n_dim, i - 1))[-1]
 q0 = x[:rp.n_par + rp.n_dim.n_dim * n_points + 1]
 p0 = x[q0.size:2 * q0.size] 
