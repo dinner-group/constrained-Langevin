@@ -214,7 +214,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
             def on_accept():
                 return position, momentum, lagrange_multiplier, energy, force, J_and_factor, args
             def on_reject():
-                return position_0, momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0
+                return position_0, -momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0
 
             position, momentum, lagrange_multiplier, energy, force, J_and_factor, args = jax.lax.cond(accept, on_accept, on_reject)
 
