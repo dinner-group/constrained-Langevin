@@ -208,7 +208,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
             prng_key, subkey = jax.random.split(prng_key)
             u = jax.random.uniform(subkey)
             H_0 = kinetic(momentum_0, inverse_mass) + energy_0
-            H = kinetic(momentum_0, inverse_mass) + energy
+            H = kinetic(momentum, inverse_mass) + energy
             accept = (H_0 - H > np.log(u)) & success
 
             def on_accept():
