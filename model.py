@@ -577,7 +577,7 @@ class KaiABC_nondim:
         yfull = np.zeros(self.n_dim + self.conservation_law.shape[0])
         yfull = yfull.at[0].set(1 - self.conservation_law[0, 1:-1]@y)
         yfull = yfull.at[1:-1].set(y)
-        yfull = yfull.at[-1].set(a0 - self.conservation_law[0, 1:-1]@y)
+        yfull = yfull.at[-1].set(a0 - self.conservation_law[1, 1:-1]@y)
         ydot = self.S@(np.exp(par).at[self.ind_ATP].multiply(ATPfrac) * np.prod(yfull**self.K.T, axis=1))
         return ydot[1:-1]
 
