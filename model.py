@@ -372,7 +372,7 @@ class KaiODE:
 
         return cls(*children[:4], **aux_data)
 
-class KaiABC_nondim:
+class KaiABC_log:
 
     n_dim = 15
     n_par = 49
@@ -575,11 +575,11 @@ class KaiABC_nondim:
 
         par = np.pad(par, (1, 0))
         yfull = np.zeros(self.n_dim + self.conservation_law.shape[0])
-        yfull = yfull.at[0].set(1 - self.conservation_law[0, 1:-1]@y)
+        yfull = yfull.at[0].set(np.log(1 - self.conservation_law[0, 1:-1]@np.exp(y)))
         yfull = yfull.at[1:-1].set(y)
-        yfull = yfull.at[-1].set(a0 - self.conservation_law[1, 1:-1]@y)
-        ydot = self.S@(np.exp(par).at[self.ind_ATP].multiply(ATPfrac) * np.prod(yfull**self.K.T, axis=1))
-        return ydot[1:-1]
+        yfull = yfull.at[-1].set(np.log(a0 - self.conservation_law[1, 1:-1]@np.exp(y)))
+        ydot = self.S[1:-1]@(np.exp(par.at[self.ind_ATP].add(np.log(ATPfrac)) + yfull@self.K)) / np.exp(y)
+        return ydot
 
     @jax.jit
     def jac(self, t, y, par=None, a0=None, ATPfrac=None):
@@ -860,7 +860,7 @@ class Pharyngeal_Minimal_Syn:
         return cls(*children, **aux_data)
 
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
-jax.tree_util.register_pytree_node(KaiABC_nondim, KaiABC_nondim._tree_flatten, KaiABC_nondim._tree_unflatten)
+jax.tree_util.register_pytree_node(KaiABC_log, KaiABC_log._tree_flatten, KaiABC_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
