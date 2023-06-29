@@ -49,7 +49,7 @@ ref = []
 i = 1
 
 while os.path.isfile("ml_lc%d.npy"%(i)):
-    ref.append(np.load("ml_lc%d.npy"%(i)))
+    ref.append(np.load("ml_lc%d.npy"%(i))[::10])
     i += 1
 
 ref = np.vstack(ref)
