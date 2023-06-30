@@ -192,11 +192,12 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
 
     def cond(carry):
         i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = carry
-        return (i < n_steps) & success & (energy < 2e3)
+        return (i < n_steps) & (energy < 2e3)
 
     def loop_body(carry):
         
         i, position_0, momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0, out, success, prng_key, key_out = carry
+        accept = not metropolize
 
         position, momentum, _, energy, force, J_and_factor, args = B(position_0, momentum_0, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy_0, force_0, J_and_factor_0, args_0, linsol)
         position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier_0, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
@@ -209,14 +210,15 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
             u = jax.random.uniform(subkey)
             H_0 = kinetic(momentum_0, inverse_mass) + energy_0
             H = kinetic(momentum, inverse_mass) + energy
-            accept = (H_0 - H > np.log(u)) & success
+            accept = (H_0 - H > np.log(u))
 
-            def on_accept():
-                return position, momentum, lagrange_multiplier, energy, force, J_and_factor, args
-            def on_reject():
-                return position_0, -momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0
+        accept = accept & success
 
-            position, momentum, lagrange_multiplier, energy, force, J_and_factor, args = jax.lax.cond(accept, on_accept, on_reject)
+        def on_accept():
+            return position, momentum, lagrange_multiplier, energy, force, J_and_factor, args
+        def on_reject():
+            return position_0, -momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0
+        position, momentum, lagrange_multiplier, energy, force, J_and_factor, args = jax.lax.cond(accept, on_accept, on_reject)
 
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
 
