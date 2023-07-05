@@ -557,7 +557,7 @@ class KaiABC_log:
     
     K = np.where(S < 0, -S, 0)
 
-    def __init__(self, par, a0=0.17143, ATPfrac=1.):
+    def __init__(self, par, a0=6/35, ATPfrac=1.):
 
         self.a0 = a0
         self.ATPfrac = ATPfrac
@@ -580,6 +580,232 @@ class KaiABC_log:
         yfull = yfull.at[-1].set(np.log(a0 - self.conservation_law[1, 1:-1]@np.exp(y)))
         ydot = self.S[1:-1]@(np.exp(par.at[self.ind_ATP].add(np.log(ATPfrac)) + yfull@self.K)) / np.exp(y)
         return ydot
+
+    @jax.jit
+    def jac(self, t, y, par=None, a0=None, ATPfrac=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, par, a0, ATPfrac)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
+    def _tree_flatten(self):
+        children = (self.par, self.a0, self.ATPfrac)
+        aux_data = {}
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+class KaiABC_nondim:
+
+    n_dim = 15
+    n_par = 49
+    conservation_law = np.array([[1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 0.],
+                                 [0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 1., 2., 1., 2., 1.]])
+    ind_ATP = np.array([7, 11, 12, 17, 20, 23, 26, 30])
+    S = np.zeros((n_dim + conservation_law.shape[0], n_par + 1))
+
+    S = S.at[0, 0].set(1)
+    S = S.at[1, 0].set(-1)
+    S = S.at[-1, 0].set(1)
+    
+    S = S.at[0, 1].set(1)
+    S = S.at[2, 1].set(-1)
+    
+    S = S.at[0, 2].set(1)
+    S = S.at[6, 2].set(-1)
+    
+    S = S.at[1, 3].set(1)
+    S = S.at[3, 3].set(-1)
+    
+    S = S.at[1, 4].set(1)
+    S = S.at[7, 4].set(-1)
+    
+    S = S.at[2, 5].set(1)
+    S = S.at[3, 5].set(-1)
+    S = S.at[-1, 5].set(1)
+    
+    S = S.at[2, 6].set(1)
+    S = S.at[4, 6].set(-1)
+    
+    S = S.at[3, 7].set(1)
+    S = S.at[1, 7].set(-1)
+    
+    S = S.at[3, 8].set(1)
+    S = S.at[5, 8].set(-1)
+    
+    S = S.at[4, 9].set(1)
+    S = S.at[5, 9].set(-1)
+    S = S.at[-1, 9].set(1)
+    
+    S = S.at[4, 10].set(1)
+    S = S.at[8, 10].set(-1)
+    
+    S = S.at[5, 11].set(1)
+    S = S.at[3, 11].set(-1)
+    
+    S = S.at[5, 12].set(1)
+    S = S.at[7, 12].set(-1)
+    
+    S = S.at[5, 13].set(1)
+    S = S.at[9, 13].set(-1)
+    
+    S = S.at[6, 14].set(1)
+    S = S.at[7, 14].set(-1)
+    S = S.at[-1, 14].set(1)
+    
+    S = S.at[6, 15].set(1)
+    S = S.at[4, 15].set(-1)
+    
+    S = S.at[6, 16].set(1)
+    S = S.at[8, 16].set(-1)
+    
+    S = S.at[7, 17].set(1)
+    S = S.at[1, 17].set(-1)
+    
+    S = S.at[7, 18].set(1)
+    S = S.at[5, 18].set(-1)
+    
+    S = S.at[7, 19].set(1)
+    S = S.at[11, 19].set(-1)
+    
+    S = S.at[8, 20].set(1)
+    S = S.at[4, 20].set(-1)
+    
+    S = S.at[8, 21].set(1)
+    S = S.at[9, 21].set(-1)
+    S = S.at[-1, 21].set(1)
+    
+    S = S.at[8, 22].set(1)
+    S = S.at[12, 22].set(-1)
+    S = S.at[-1, 22].set(1)
+    
+    S = S.at[9, 23].set(1)
+    S = S.at[5, 23].set(-1)
+    
+    S = S.at[9, 24].set(1)
+    S = S.at[11, 24].set(-1)
+    
+    S = S.at[9, 25].set(1)
+    S = S.at[13, 25].set(-1)
+    S = S.at[-1, 25].set(1)
+    
+    S = S.at[10, 26].set(1)
+    S = S.at[6, 26].set(-1)
+    
+    S = S.at[10, 27].set(1)
+    S = S.at[8, 27].set(-1)
+    
+    S = S.at[10, 28].set(1)
+    S = S.at[11, 28].set(-1)
+    S = S.at[-1, 28].set(1)
+    
+    S = S.at[10, 29].set(1)
+    S = S.at[14, 29].set(-1)
+    S = S.at[-1, 29].set(1)
+    
+    S = S.at[11, 30].set(1)
+    S = S.at[7, 30].set(-1)
+    
+    S = S.at[11, 31].set(1)
+    S = S.at[9, 31].set(-1)
+    
+    S = S.at[11, 32].set(1)
+    S = S.at[15, 32].set(-1)
+    S = S.at[-1, 32].set(1)
+    
+    S = S.at[12, 33].set(1)
+    S = S.at[13, 33].set(-1)
+    S = S.at[-1, 33].set(1)
+    
+    S = S.at[13, 34].set(1)
+    S = S.at[15, 34].set(-1)
+    
+    S = S.at[14, 35].set(1)
+    S = S.at[12, 35].set(-1)
+    
+    S = S.at[14, 36].set(1)
+    S = S.at[15, 36].set(-1)
+    S = S.at[-1, 36].set(1)
+    
+    S = S.at[15, 37].set(1)
+    S = S.at[13, 37].set(-1)
+    
+    S = S.at[1, 38].set(1)
+    S = S.at[0, 38].set(-1)
+    S = S.at[-1, 38].set(-1)
+    
+    S = S.at[3, 39].set(1)
+    S = S.at[2, 39].set(-1)
+    S = S.at[-1, 39].set(-1)
+    
+    S = S.at[5, 40].set(1)
+    S = S.at[4, 40].set(-1)
+    S = S.at[-1, 40].set(-1)
+    
+    S = S.at[7, 41].set(1)
+    S = S.at[6, 41].set(-1)
+    S = S.at[-1, 41].set(-1)
+    
+    S = S.at[9, 42].set(1)
+    S = S.at[8, 42].set(-1)
+    S = S.at[-1, 42].set(-1)
+    
+    S = S.at[11, 43].set(1)
+    S = S.at[10, 43].set(-1)
+    S = S.at[-1, 43].set(-1)
+    
+    S = S.at[12, 44].set(1)
+    S = S.at[8, 44].set(-1)
+    S = S.at[-1, 44].set(-1)
+    
+    S = S.at[13, 45].set(1)
+    S = S.at[9, 45].set(-1)
+    S = S.at[-1, 45].set(-1)
+    
+    S = S.at[13, 46].set(1)
+    S = S.at[12, 46].set(-1)
+    S = S.at[-1, 46].set(-1)
+    
+    S = S.at[14, 47].set(1)
+    S = S.at[10, 47].set(-1)
+    S = S.at[-1, 47].set(-1)
+    
+    S = S.at[15, 48].set(1)
+    S = S.at[11, 48].set(-1)
+    S = S.at[-1, 48].set(-1)
+    
+    S = S.at[15, 49].set(1)
+    S = S.at[14, 49].set(-1)
+    S = S.at[-1, 49].set(-1)
+    
+    K = np.where(S < 0, -S, 0)
+
+    def __init__(self, par, a0=6/35, ATPfrac=1.):
+
+        self.a0 = a0
+        self.ATPfrac = ATPfrac
+        self.par = par
+
+    @jax.jit
+    def f(self, t, y, par=None, a0=None, ATPfrac=None):
+
+        if par is None:
+            par = self.par
+        if a0 is None:
+            a0 = self.a0
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        par = np.pad(par, (1, 0))
+        yfull = np.zeros(self.n_dim + self.conservation_law.shape[0])
+        yfull = yfull.at[0].set(1 - self.conservation_law[0, 1:-1]@y)
+        yfull = yfull.at[1:-1].set(y)
+        yfull = yfull.at[-1].set(a0 - self.conservation_law[1, 1:-1]@y)
+        ydot = self.S@(np.exp(par).at[self.ind_ATP].multiply(ATPfrac) * np.prod(yfull**self.K.T, axis=1))
+        return ydot[1:-1]
 
     @jax.jit
     def jac(self, t, y, par=None, a0=None, ATPfrac=None):
@@ -861,6 +1087,7 @@ class Pharyngeal_Minimal_Syn:
 
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_log, KaiABC_log._tree_flatten, KaiABC_log._tree_unflatten)
+jax.tree_util.register_pytree_node(KaiABC_nondim, KaiABC_nondim._tree_flatten, KaiABC_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
