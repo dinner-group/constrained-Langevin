@@ -200,11 +200,12 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         accept = not metropolize
 
         position, momentum, _, energy, force, J_and_factor, args = B(position_0, momentum_0, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy_0, force_0, J_and_factor_0, args_0, linsol)
-        position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier_0, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
+        position, momentum, lagrange_multiplier, J_and_factor, args, success1 = A(position, momentum, lagrange_multiplier_0, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
         position, momentum, _, prng_key, args = O(position, momentum, dt, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, linsol, temperature)
-        position, momentum, lagrange_multiplier, J_and_factor, args, success = A(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
+        position, momentum, lagrange_multiplier, J_and_factor, args, success2 = A(position, momentum, lagrange_multiplier, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
         position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor=J_and_factor, args=args, linsol=linsol)
-        
+        success = success1 & success2
+
         if metropolize:
             prng_key, subkey = jax.random.split(prng_key)
             u = jax.random.uniform(subkey)
