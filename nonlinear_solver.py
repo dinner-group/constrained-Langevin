@@ -290,7 +290,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def quasi_newton_bvp_symm_1(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
+def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
     
     if inverse_mass is None:
         jac_prev_sqrtM = jac_prev

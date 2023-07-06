@@ -77,7 +77,7 @@ key_out = []
 while n_steps > 0:
     
     traj_br_lc, key_lc = lgvn.gBAOAB(q1, p1, l1, dt, friction, n_steps, thin, prng_key, U, f, J,\
-                                     energy=energy, force=force, A=rattle_drift_ml_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_1,\
+                                     energy=energy, force=force, A=rattle_drift_ml_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden,\
                                      linsol=linear_solver.qr_lstsq_rattle_bvp, max_newton_iter=100, tol=1e-8, args=(mesh_points, bounds), inverse_mass=Minv)
     
     n_success = np.isfinite(traj_br_lc[:, 0]).sum() - 10
