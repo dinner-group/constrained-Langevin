@@ -454,3 +454,47 @@ def repressilator_log_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 
     E += np.where(mesh_density_peak >= 5, (mesh_density_peak - 5)**2, 0)
 
     return E
+
+@jax.jit
+def kai_sna_log(q):
+    z = q[:model.KaiABC_nondim.n_par]
+    y = q[model.KaiABC_nondim.n_par:model.KaiABC_nondim.n_par + model.KaiABC_nondim.n_dim + 2]
+    z = np.concatenate([np.array([model.KaiABC_nondim.K[:, 0]@y]), z])
+    return np.concatenate([model.KaiABC_nondim.S[1:-1]@np.exp(z), model.KaiABC_nondim.conservation_law@np.exp(y) - np.array([1, 6 / 35])])
+
+@jax.jit
+def fully_extended_hopf_kai_dae(q):
+    y = q[model.KaiABC_nondim.n_par:model.KaiABC_nondim.n_par + model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0]]
+    z = np.concatenate([model.KaiABC_nondim.K[:, :1].T@y, q[:model.KaiABC_nondim.n_par]])
+    evec_real = q[model.KaiABC_nondim.n_par + model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0]:model.KaiABC_nondim.n_par + 2 * (model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0])]
+    evec_imag = q[model.KaiABC_nondim.n_par + 2 * (model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0]):model.KaiABC_nondim.n_par + 3 * (model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0])]
+    eval_imag = np.exp(q[model.KaiABC_nondim.n_par + 3 * (model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0])])
+    A = np.identity(y.size).at[np.array([[0, -0], [-1, -1]])].set(0)
+    J = (model.KaiABC_nondim.S * np.exp(z))@(model.KaiABC_nondim.K.T * np.exp(-y))
+    J = J.at[0].set(model.KaiABC_nondim.conservation_law[0])
+    J = J.at[-1].set(model.KaiABC_nondim.conservation_law[-1])
+    
+    return np.concatenate([kai_sna_log(q[:model.KaiABC_nondim.n_par + model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0]]),
+                           J@evec_real + eval_imag * A@evec_imag,
+                           J@evec_imag - eval_imag * A@evec_real,
+                           np.ravel(evec_real@evec_real + evec_imag@evec_imag - 1),
+                           evec_imag[:1]
+                          ])
+
+@jax.jit
+def kai_sna_potential(q):
+    z = q[:model.KaiABC_nondim.n_par]
+    y = q[model.KaiABC_nondim.n_par:model.KaiABC_nondim.n_par + model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0]]
+    k = z - model.KaiABC_nondim.K[:, 1:].T@y
+    E = 0
+    E += np.where(np.abs(k) > 7, 100 * (np.abs(k) - 7)**2 / 2, 0).sum()
+    return E
+
+@jax.jit
+def kai_sna_hb_potential(q):
+    z = q[:model.KaiABC_nondim.n_par]
+    y = q[model.KaiABC_nondim.n_par:model.KaiABC_nondim.n_par + model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0]]
+    log_eval_imag = q[model.KaiABC_nondim.n_par + 3 * (model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0])]
+    E = kai_sna_potential(q)
+    E += np.where(log_eval_imag < -9, 100 * (log_eval_imag + 9)**2 / 2, 0)
+    return E
