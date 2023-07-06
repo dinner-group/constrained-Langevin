@@ -136,27 +136,33 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_qn_
 
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_rattle(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, args), x)
 
-@partial(jax.jit, static_argnums=(1, 3, 5, 6, 7))
-def quasi_newton_rattle_symm(x, resid, jac_prev, jac=None, inverse_mass=None, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=()):
-
-    if jac is None:
-        jac = jax.jacfwd(resid)
+@partial(jax.jit, static_argnums=(1, 3, 5, 6))
+def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
 
     if inverse_mass is None:
-        jac_prevM = jac_prev
         jac_prev_sqrtM = jac_prev
     elif len(inverse_mass.shape) == 1:
-        jac_prevM = jac_prev * inverse_mass
-        jac_prev_sqrtM = jac_prev * np.sqrt(inverse_mass)
+        sqrtMinv = np.sqrt(inverse_mass)
+        jac_prev_sqrtM = jac_prev * sqrtMinv
     else:
-        jac_prevM = jac_prev@inverse_mass
+        sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
-    J = jac(x, *args)
-    R = np.linalg.qr(jac_prev_sqrtM.T)[1]
-    dx = jac_prevM.T@jax.scipy.linalg.cho_solve((R, False), -resid(x, *args))
+    Q, R = np.linalg.qr(jac_prev_sqrtM.T)
+
+    def lstsq(b):
+        x = Q@jax.scipy.linalg.solve_triangular(R.T, b, lower=True)
+        if inverse_mass is not None:
+            if len(inverse_mass.shape) == 1:
+                x = sqrtMinv * dx
+            else:
+                x = sqrtMinv@dx
+        return x
+
+    dx = lstsq(-resid(x, *args))
     x = x + dx
-    v = jac_prevM.T@jax.scipy.linalg.cho_solve((R, False), -resid(x, *args))
+    #v = Q@jax.scipy.linalg.solve_triangular(R.T, -resid(x, *args), lower=True)
+    v = lstsq(-resid(x, *args))
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -164,12 +170,12 @@ def quasi_newton_rattle_symm(x, resid, jac_prev, jac=None, inverse_mass=None, ma
 
     def cond1(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
-        return (step < max_qn_iter) & np.any(np.abs(dx) > tol) & (contraction_factor < 0.5)
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
 
     def loop1(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v = jac_prevM.T@jax.scipy.linalg.cho_solve((R, False), -resid(x, *args))
+        v = lstsq(-resid(x, *args))
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
@@ -178,9 +184,9 @@ def quasi_newton_rattle_symm(x, resid, jac_prev, jac=None, inverse_mass=None, ma
         dx = v / (1 - projection2)
         return x, step + 1, dx, dx_prev, projection2, contraction_factor
 
-    x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init_val=(x, 1, dx, dx_prev, projection2, contraction_factor))
-
-    return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_rattle(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, args), x)
+    init = (x, 1, dx, dx_prev, projection2, contraction_factor)
+    x, step, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond1, loop1, init)
+    return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
 def newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_iter=20, tol=1e-9, args=()):
