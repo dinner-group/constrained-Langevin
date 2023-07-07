@@ -248,3 +248,78 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = jax.lax.while_loop(cond, loop_body, init)
     
     return out, key_out
+
+@partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23, 24))
+def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9, metropolize=False, non_reversible_check=False):
+
+    if jac_constraint is None:
+        jac_constraint = jax.jacfwd(constraint)
+    
+    if energy is None:
+        energy = potential(position, *args)
+
+    if force is None:
+        force = jax.jacfwd(potential)(position, *args)
+
+    Jcons = jac_constraint(position, *args)
+    _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
+    args_size = 0
+
+    if len(args) > 0:
+        args_flatten = np.concatenate(tuple(x.ravel() for x in args))
+        args_size = args_flatten.size
+
+    out = np.full((n_steps // thin, position.size + momentum.size + lagrange_multiplier.size + 1 + force.size + args_size), np.nan)
+    key_out = np.zeros((n_steps // thin, 2), dtype=np.uint32)
+
+    def cond(carry):
+        i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = carry
+        return (i < n_steps) & (energy < 2e3)
+
+    def loop_body(carry):
+        
+        i, position_0, momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0, out, success, prng_key, key_out = carry
+        accept = not metropolize
+        success = True
+
+        position, momentum, _, prng_key, args = O(position_0, momentum_0, dt / 2, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, J_and_factor_0, args_0, linsol, temperature)
+        position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, energy_0, force_0, J_and_factor_0, args, linsol)
+        position, momentum, lagrange_multiplier, J_and_factor, args, success_step = A(position, momentum, lagrange_multiplier_0, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
+        success = success & success_step
+
+        if non_reversible_check:
+            position_rev, _, _, _, _, success_step = A(position, -momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, nlsol, linsol, max_newton_iter, tol)
+            success = success & success_step & np.all(np.abs(position_rev - position_0) < tol)
+
+        position, momentum, _, energy, force, J_and_factor, args = B(position, momentum, dt / 2, potential, constraint, jac_constraint, inverse_mass, J_and_factor=J_and_factor, args=args, linsol=linsol)
+        position, momentum, _, prng_key, args = O(position, momentum, dt / 2, friction, prng_key, potential, constraint, jac_constraint, inverse_mass, J_and_factor, args, linsol, temperature)
+
+        if metropolize:
+            prng_key, subkey = jax.random.split(prng_key)
+            u = jax.random.uniform(subkey)
+            H_0 = kinetic(momentum_0, inverse_mass) + energy_0
+            H = kinetic(momentum, inverse_mass) + energy
+            accept = (H_0 - H > np.log(u))
+
+        accept = accept & success
+
+        def on_accept():
+            return position, momentum, lagrange_multiplier, energy, force, J_and_factor, args
+        def on_reject():
+            return position_0, -momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0
+        position, momentum, lagrange_multiplier, energy, force, J_and_factor, args = jax.lax.cond(accept, on_accept, on_reject)
+
+        out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
+
+        if(args_size > 0):
+            args_flatten = np.concatenate(tuple(x.ravel() for x in args))
+            out_step = np.concatenate([out_step, args_flatten])
+        
+        out = jax.lax.dynamic_update_slice(out, np.expand_dims(out_step, 0), (i // thin, 0))
+        key_out = jax.lax.dynamic_update_slice(key_out, np.expand_dims(prng_key, 0), (i // thin, 0))
+        return (i + 1, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out)
+
+    init = (0, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, True, prng_key, key_out)
+    i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = jax.lax.while_loop(cond, loop_body, init)
+    
+    return out, key_out
