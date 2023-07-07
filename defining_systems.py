@@ -497,4 +497,13 @@ def kai_sna_hb_potential(q):
     log_eval_imag = q[model.KaiABC_nondim.n_par + 3 * (model.KaiABC_nondim.n_dim + model.KaiABC_nondim.conservation_law.shape[0])]
     E = kai_sna_potential(q)
     E += np.where(log_eval_imag < -9, 100 * (log_eval_imag + 9)**2 / 2, 0)
+
+    pU_logsum = np.log(np.exp(y[:2]).sum())
+    E += np.where(pU_logsum < -2, 10 * (pU_logsum + 2)**2 / 2, 0)
+    pT_logsum = np.log(np.exp(y[2:4]).sum())
+    E += np.where(pT_logsum < -2, 10 * (pT_logsum + 2)**2 / 2, 0)
+    pD_logsum = np.log(np.exp(y[np.array([4, 5, 8, 9, 12, 13])]).sum())
+    E += np.where(pD_logsum < -2, 10 * (pD_logsum + 2)**2 / 2, 0)
+    pS_logsum = np.log(np.exp(y[np.array([6, 7, 10, 11, 14, 15])]).sum())
+    E += np.where(pS_logsum < -2, 10 * (pS_logsum + 2)**2 / 2, 0)
     return E
