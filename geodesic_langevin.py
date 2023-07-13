@@ -177,7 +177,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         energy = potential(position, *args)
 
     if force is None:
-        force = jax.jacfwd(potential)(position, *args)
+        force = jax.jacrev(potential)(position, *args)
 
     Jcons = jac_constraint(position, *args)
     _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
