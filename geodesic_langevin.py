@@ -140,7 +140,7 @@ def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, 
     constraint_args_new[1] = mesh_new
     constraint_args_new = tuple(constraint_args_new)
 
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, constraint_args_new, success = rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, 
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, constraint_args_new, success = rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, None, 
                                                                                                                        constraint_args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
 
     if reversibility_tol is not None:
