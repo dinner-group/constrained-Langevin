@@ -115,8 +115,8 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     momentum_new, lagrange_multiplier_new, J_and_factor_new = linsol(Jcons, momentum_new, None, inverse_mass)
 
     if reversibility_tol is not None:
-        position_rev, momentum_rev, lagrange_multiplier_rev, _, args_rev, success_rev = rattle_drift(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor_new, args_new, 
-                                                                                       nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
+        position_rev, momentum_rev, lagrange_multiplier_rev, _, args_rev, success_rev = rattle_drift(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor_new, 
+                                                                                                     args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
         success = success & success_rev & np.all(np.abs(position - position_rev) < reversibility_tol)
 
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, args_new, success
@@ -138,21 +138,21 @@ def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, 
     momentum = momentum.at[ode_model.n_par:-1].set(yp_new.ravel(order="F"))
     constraint_args_new = list(constraint_args)
     constraint_args_new[1] = mesh_new
-    constraint_args_new = tuple(constraint_args)
+    constraint_args_new = tuple(constraint_args_new)
 
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, constraint_args_new, success = rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, 
-                                                                                                                       constraint_args, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
+                                                                                                                       constraint_args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
 
     if reversibility_tol is not None:
-        position_rev, momentum_rev, lagrange_multiplier_rev, _, constraint_args_rev, success_rev = rattle_drift_bvp_mm(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor_new,
-                                                                                                         constraint_args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
+        position_rev, momentum_rev, lagrange_multiplier_rev, _, constraint_args_rev, success_rev = rattle_drift_bvp_mm(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, inverse_mass, 
+                                                                                                                       None, constraint_args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
         success = success & success_rev
+        n_mesh_intervals = mesh_new.size - 1 
         n_points = (n_mesh_intervals * util.gauss_points.size + 1)
         y0 = position[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
-        mesh0 = constraint_args[1]
         yrev = position_rev[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
         mesh_rev = constraint_args_rev[1]
-        yrev_interp = util.interpolate(yrev, mesh_rev, util.fill_mesh(mesh0))
+        yrev_interp = util.interpolate(yrev, mesh_rev, util.fill_mesh(mesh_new))
         success = success & np.all(np.abs(yrev_interp - y0) < reversibility_tol) & np.all(np.abs(position[:ode_model.n_par] - position_rev[:ode_model.n_par]) < reversibility_tol)\
                 & np.all(np.abs(position[ode_model.n_par + n_points * ode_model.n_dim:] - position_rev[ode_model.n_par + n_points * ode_model.n_dim:]) < reversibility_tol)
 
