@@ -872,6 +872,41 @@ class Brusselator:
 
         return cls(*children, **aux_data)
 
+class Brusselator_log:
+
+    n_dim = 2
+    n_par = 3
+
+    def __init__(self, reaction_consts, **kwargs):
+        self.reaction_consts = reaction_consts
+
+    @jax.jit
+    def f(self, t, y, k=None):
+        if k is None:
+            k = self.reaction_consts
+        return np.array([np.exp(-y[0]) + np.exp(k[0] + y[0] + y[1]) - np.exp(k[1]) - np.exp(k[2]),
+                         -np.exp(k[0] + 2 * y[0]) + np.exp(k[1] + y[0] - y[1])])
+
+    @jax.jit
+    def jac(self, t, y, k=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, reaction_consts)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
+    def _tree_flatten(self):
+
+        children = (self.reaction_consts,)
+        aux_data = {}
+
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+
+        return cls(*children, **aux_data)
+
 class Repressilator_log:
 
     n_dim = 3
@@ -1089,6 +1124,7 @@ jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_un
 jax.tree_util.register_pytree_node(KaiABC_log, KaiABC_log._tree_flatten, KaiABC_log._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_nondim, KaiABC_nondim._tree_flatten, KaiABC_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
+jax.tree_util.register_pytree_node(Brusselator_log, Brusselator_log._tree_flatten, Brusselator_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log, Repressilator_log._tree_flatten, Repressilator_log._tree_unflatten)
