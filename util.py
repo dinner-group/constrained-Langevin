@@ -128,6 +128,22 @@ def permute_q_mesh(x, ode_model, n_mesh_intervals, gauss_points=gauss_points):
 
     return x
 
+@partial(jax.jit, static_argnums=(2,))
+def unpermute_q_mesh(x, ode_model, n_mesh_intervals, gauss_points=gauss_points):
+    
+    is_vector = len(x.shape) == 1
+    if is_vector:
+        x = np.expand_dims(x, 0)
+
+    y_and_mesh = x[:, ode_model.n_dim:-ode_model.n_dim * gauss_points.size].reshape((x.shape[0], ode_model.n_dim * gauss_points.size + 1, n_mesh_intervals - 1), order="F")
+    x = np.hstack([x[:, :ode_model.n_dim], y_and_mesh[:, :-1, :].reshape((x.shape[0], ode_model.n_dim * gauss_points.size * (n_mesh_intervals - 1)), order="F"), 
+                   x[:, -ode_model.n_dim * gauss_points.size:],
+                   y_and_mesh[:, -1:, :].reshape((x.shape[0], n_mesh_intervals - 1), order="F")])
+
+    if is_vector:
+        x = np.ravel(x)
+
+    return x
 
 class BVPJac:
 
@@ -391,7 +407,7 @@ class BVPMMJac:
         self.Jmesh = Jmesh
         self.n_dim = n_dim
         self.n_par = n_par
-        self.n_mesh_intervals = mesh_intervals
+        self.n_mesh_intervals = n_mesh_intervals
         self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim + n_mesh_intervals, Jy.shape[0] * Jy.shape[1] + n_dim + n_mesh_intervals + Jk.shape[2]))
 
         if Jbc_left is None:
@@ -414,11 +430,11 @@ class BVPMMJac:
 
         def loop_body(carry, _):
             i, Jy_dense = carry
-            Jy_dense = jax.lax.dynamic_update_slice(Jy_dense, self.Jy[i], (i * self.Jy.shape[1], i * self.Jy.shape[1]))
+            Jy_dense = jax.lax.dynamic_update_slice(Jy_dense, self.Jy[i, :, :-1], (i * self.Jy.shape[1], i * self.Jy.shape[1]))
             return (i + 1, Jy_dense), _
 
         Jy_dense = jax.lax.scan(loop_body, init=(0, Jy_dense), xs=None, length=self.Jy.shape[0])[0][1]
-        return np.hstack([Jk[:, :self.n_par], Jy_dense, Jk[:, self.n_par:]])
+        return np.vstack([np.hstack([Jk[:, :self.n_par], Jy_dense, Jk[:, self.n_par:]]), self.Jmesh])
 
     @jax.jit
     def left_multiply(self, v):
@@ -553,7 +569,7 @@ class BVPMMJac:
         return BVPJac_LQ(out[0][1], Q_bc, out[0][2], R_bc)
     
     def _tree_flatten(self):
-        children = (self.Jy, self.Jk, self.Jm, self.Jbc_left, self.Jbc_right)
+        children = (self.Jy, self.Jk, self.Jmesh, self.Jbc_left, self.Jbc_right)
         aux_data = {"n_dim":self.n_dim, "n_par":self.n_par, "n_mesh_intervals":self.n_mesh_intervals}
         return (children, aux_data)
 
@@ -641,5 +657,5 @@ class BVPMMJac_LQ:
 
 jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
-jax.tree_util.register_pytree_node(BVPMMJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
-jax.tree_util.register_pytree_node(BVPMMJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
+jax.tree_util.register_pytree_node(BVPMMJac, BVPMMJac._tree_flatten, BVPMMJac._tree_unflatten)
+jax.tree_util.register_pytree_node(BVPMMJac_LQ, BVPMMJac_LQ._tree_flatten, BVPMMJac_LQ._tree_unflatten)
