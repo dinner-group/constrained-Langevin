@@ -137,10 +137,8 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, n_mesh_intervals=60, colloc_points_
 
     Jmesh_y = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points[1:-1], ode_model)
     Jmesh_m = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points[1:-1], ode_model)
-    Jmesh = np.concatenate([Jmesh_y[:, ode_model.n_dim:ode_model.n_dim * (n_points - util.gauss_points.size)].reshape((Jmesh_y.shape[0], ode_model.n_dim * util.gauss_points.size, n_mesh_intervals - 1), order="F"), 
-                            np.expand_dims(Jmesh_m, 1)], axis=1)
-    Jmesh = Jmesh.reshape((n_mesh_intervals - 1, (util.gauss_points.size * ode_model.n_dim + 1) * (n_mesh_intervals - 1)), order="F")
-    Jmesh = np.hstack([Jmesh_y[:, :ode_model.n_dim], Jmesh, Jmesh_y[:, ode_model.n_dim * (n_points - util.gauss_points.size):ode_model.n_dim * n_points]])
+    Jmesh = np.hstack([Jmesh_y, Jmesh_m])
+    Jmesh = util.permute_q_mesh(Jmesh, ode_model, n_mesh_intervals)
 
     J = util.BVPMMJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], Jmesh, ode_model.n_dim, ode_model.n_par, n_mesh_intervals)
 
