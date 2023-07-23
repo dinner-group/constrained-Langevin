@@ -138,9 +138,9 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, n_mesh_intervals=60, colloc_points_
     Jmesh_y = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points[1:-1], ode_model)
     Jmesh_m = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points[1:-1], ode_model)
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
-    Jmesh = util.permute_q_mesh(Jmesh, ode_model, n_mesh_intervals)
+    Jmesh = util.permute_q_mesh(Jmesh, ode_model.n_dim, n_mesh_intervals)
 
-    J = util.BVPMMJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], Jmesh, ode_model.n_dim, ode_model.n_par, n_mesh_intervals)
+    J = util.BVPMMJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], Jmesh, ode_model.n_dim, ode_model.n_par)
 
     return J
 
