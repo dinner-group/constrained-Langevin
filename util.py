@@ -434,19 +434,19 @@ class BVPMMJac:
         Jm_dense = Jm_dense.at[:self.Jy.shape[1], 0].set(self.Jy[0, :, -1])
 
         Jy_dense_N = np.hstack([self.Jy[-1, :, :self.n_dim], self.Jy[-1, :, self.n_dim + 1:-1]])
-        Jy_dense = Jy_dense.at[-self.Jy.shape[1]:, -self.Jy.shape[1] + self.n_dim:].set(Jy_dense_N)
-        Jm_dense = Jm_dense.at[-self.Jy.shape[1]:, -1].set(self.Jy[-1, :, self.n_dim])
+        Jy_dense = Jy_dense.at[self.Jmesh.shape[0] * self.Jy.shape[1]:(self.Jmesh.shape[0] + 1) * self.Jy.shape[1], self.Jmesh.shape[0] * self.Jy.shape[1]:self.Jmesh.shape[0] * self.Jy.shape[1] + 1 + Jy_dense_N.shape[1]].set(Jy_dense_N)
+        Jm_dense = Jm_dense.at[self.Jmesh.shape[0] * self.Jy.shape[1]:(self.Jmesh.shape[0] + 1) * self.Jy.shape[1], -1].set(self.Jy[-1, :, self.n_dim])
 
         def loop_body(carry, _):
             i, Jy_dense, Jm_dense = carry
             Jy_dense_i = np.hstack([self.Jy[i, :, :self.n_dim], jax.lax.dynamic_slice(self.Jy[i], (0, self.n_dim + 1), (self.Jy.shape[1], self.Jy.shape[2] - 2 - self.n_dim))])
             Jy_dense = jax.lax.dynamic_update_slice(Jy_dense, Jy_dense_i, (i * self.Jy.shape[1], i * self.Jy.shape[1]))
             Jm_dense = jax.lax.dynamic_update_slice(Jm_dense, jax.lax.dynamic_slice(self.Jy[i], (0, self.n_dim), (self.Jy.shape[1], 1)), (i * self.Jy.shape[1], i - 1))
-            Jm_dense = jax.lax.dynamic_update_slice(Jm_dense, self.Jy[i, :, -1], (i * self.Jy.shape[1], i))
+            Jm_dense = jax.lax.dynamic_update_slice(Jm_dense, self.Jy[i, :, -1:], (i * self.Jy.shape[1], i))
             return (i + 1, Jy_dense, Jm_dense), _
 
-        Jy_dense = jax.lax.scan(loop_body, init=(1, Jy_dense, Jm_dense), xs=None, length=self.Jy.shape[0] - 2)[0][1]
-        return np.vstack([np.hstack([Jk[:, :self.n_par], Jy_dense, Jk[:, self.n_par:]]), unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jmesh.shape[0] + 1)])
+        Jy_mesh_dense = np.hstack(jax.lax.scan(loop_body, init=(1, Jy_dense, Jm_dense), xs=None, length=self.Jy.shape[0] - 2)[0][1:])
+        return np.vstack([np.hstack([Jk[:, :self.n_par], Jy_mesh_dense, Jk[:, self.n_par:]]), np.pad(unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jmesh.shape[0] + 1), ((0, 0), (self.n_par, self.Jk.shape[2] - self.n_par)))])
 
     @jax.jit
     def left_multiply(self, v):
