@@ -523,21 +523,28 @@ class BVPMMJac:
     @jax.jit
     def right_multiply_diag(self, D):
 
-        Dy = D[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
-        Dk = np.concatenate([D[:self.n_par], D[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:]])
+        Dy = D[self.n_par:self.n_par - self.Jk.shape[2]]
+        Dy = permute_q_mesh(Dy, self.n_dim, self.Jmesh.shape[0] + 1)
+        Dk = np.concatenate([D[:self.n_par], D[self.n_par - self.Jk.shape[2]:]])
+
+        Jy = self.Jy.at[0, :, :self.n_dim].multiply(Dy[:self.n_dim])
+        Jy = Jy.at[0, :, self.n_dim + 1:].multiply(Dy[self.n_dim:Jy.shape[2] - 1])
+        Jy = Jy.at[-1, :, :-1].multiply(Dy[-Jy.shape[2] + 1:])
+
+        Jmesh = self.Jmesh * Dy
 
         def loop_body(carry, _):
             i, Jy = carry
-            Dyi = jax.lax.dynamic_slice(Dy, (i * Jy.shape[1],), (Jy.shape[1] + self.n_dim,))
+            Dyi = jax.lax.dynamic_slice(Dy, (i * (1 + Jy.shape[1]) - 1,), (Jy.shape[2],))
             Jy = Jy.at[i].multiply(Dyi)
             return (i + 1, Jy), _
 
-        Jy = jax.lax.scan(loop_body, init=(0, self.Jy), xs=None, length=self.Jy.shape[0])[0][1]
+        Jy = jax.lax.scan(loop_body, init=(1, Jy), xs=None, length=self.Jy.shape[0] - 2)[0][1]
         Jk = np.reshape(np.vstack(self.Jk) * Dk, (self.Jk.shape))
-        Jbc_left = self.Jbc_left * D[self.n_par:self.n_par + self.n_dim]
-        Jbc_right = self.Jbc_right * D[self.n_par + self.Jy.shape[0] * self.Jy.shape[1]:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
+        Jbc_left = self.Jbc_left * Dy[:self.n_dim]
+        Jbc_right = self.Jbc_right * Dy[-self.n_dim:]
         
-        return BVPJac(Jy, Jk, self.n_dim, self.n_par, Jbc_left, Jbc_right)
+        return BVPMMJac(Jy, Jk, Jmesh, self.n_dim, self.n_par, Jbc_left, Jbc_right)
 
     @jax.jit
     def multiply_transpose(J1, J2):
