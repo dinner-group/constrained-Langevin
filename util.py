@@ -482,19 +482,29 @@ class BVPMMJac:
         if is_vector:
             v = np.expand_dims(v, 1)
 
-        vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
-        vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:]])
-        out = np.pad(np.vstack(self.Jk)@vk, ((0, self.n_dim), (0, 0)))
+        vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]]
+        vy = permute_q_mesh(vy.T, self.n_dim, self.Jmesh.shape[0] + 1).T
+        vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]:]])
+        out = np.vstack([np.pad(np.vstack(self.Jk)@vk, ((0, self.n_dim), (0, 0))), self.Jmesh@vy])
+        
+        out_0 = out[:self.Jy.shape[1]]
+        Jy_0 = np.hstack([self.Jy[0, :, :self.n_dim], self.Jy[0, :, self.n_dim + 1:]])
+        out = out.at[:self.Jy.shape[1], :out.shape[1]].add(Jy_0@vy[:Jy_0.shape[1]])
+
+        out_N = out[self.Jmesh.shape[0] * self.Jy.shape[1]:(self.Jmesh.shape[0] + 1) * self.Jy.shape[1]]
+        Jy_N = self.Jy[-1, :, :-1]
+        vy_N = vy[self.Jmesh.shape[0] * (1 + self.Jy.shape[1]) - 1:self.Jmesh.shape[0] * (1 + self.Jy.shape[1]) - 1 + Jy_N.shape[1]]
+        out = out.at[self.Jmesh.shape[0] * self.Jy.shape[1]:(self.Jmesh.shape[0] + 1) * self.Jy.shape[1]].add(Jy_N@vy_N)
 
         def loop_body(carry, _):
             i, out = carry
-            outi = jax.lax.dynamic_slice(out, (i * self.Jy.shape[1], 0), (self.Jy.shape[1], out.shape[1]))
-            vyi = jax.lax.dynamic_slice(vy, (i * self.Jy.shape[1], 0), (self.Jy.shape[2], out.shape[1]))
-            out = jax.lax.dynamic_update_slice(out, outi + self.Jy[i]@vyi, (i * self.Jy.shape[1], 0))
+            out_i = jax.lax.dynamic_slice(out, (i * self.Jy.shape[1], 0), (self.Jy.shape[1], out.shape[1]))
+            vy_i = jax.lax.dynamic_slice(vy, (i * (1 + self.Jy.shape[1]) - 1, 0), (self.Jy.shape[2], out.shape[1]))
+            out = jax.lax.dynamic_update_slice(out, out_i + self.Jy[i]@vy_i, (i * self.Jy.shape[1], 0))
             return (i + 1, out), _
 
-        out = jax.lax.scan(loop_body, init=(0, out), xs=None, length=self.Jy.shape[0])[0][1]
-        out = out.at[-self.n_dim:].add(self.Jbc_left@vy[:self.n_dim] + self.Jbc_right@vy[-self.n_dim:])
+        out = jax.lax.scan(loop_body, init=(1, out), xs=None, length=self.Jy.shape[0] - 2)[0][1]
+        out = out.at[-self.n_dim - self.Jmesh.shape[0]:-self.Jmesh.shape[0]].add(self.Jbc_left@vy[:self.n_dim] + self.Jbc_right@vy[-self.n_dim:])
 
         if is_vector:
             out = out.ravel()
