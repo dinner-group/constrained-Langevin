@@ -546,65 +546,69 @@ class BVPMMJac:
         
         return BVPMMJac(Jy, Jk, Jmesh, self.n_dim, self.n_par, Jbc_left, Jbc_right)
 
-    @jax.jit
-    def multiply_transpose(J1, J2):
-        
-        def loop1(i, _):
-            return i + 1, np.hstack([J1.Jy[i, :, :J1.n_dim]@J2.Jy[i - 1, :, -J1.n_dim:].T, J1.Jy[i]@J2.Jy[i].T, J1.Jy[i, :, -J1.n_dim:]@J2.Jy[i + 1, :, :J1.n_dim].T])
-        
-        Jy1Jy2T = jax.lax.scan(loop1, init=1, xs=None, length=J1.Jy.shape[0] - 2)[1]
-        Jy1Jy2T = np.vstack([[np.pad(np.hstack([J1.Jy[0]@J2.Jy[0].T, J1.Jy[0, :, -J1.n_dim:]@J2.Jy[1, :, :J1.n_dim].T]), ((0, 0), (J1.Jy.shape[1], 0)))], 
-                             Jy1Jy2T, 
-                             [np.pad(np.hstack([J1.Jy[-1, :, :J1.n_dim]@J2.Jy[-2, :, -J1.n_dim:].T, J1.Jy[-1]@J2.Jy[-1].T]), ((0, 0), (0, J1.Jy.shape[1])))]])
-        
-        J1J2T = np.pad(np.vstack(J1.Jk)@np.vstack(J2.Jk).T, ((0, J1.n_dim), (0, J2.n_dim)))
-        
-        def loop2(carry, _):
-            i, J1J2T = carry
-            J1J2Ti = jax.lax.dynamic_slice(J1J2T, (i * Jy1Jy2T.shape[1], (i - 1) * Jy1Jy2T.shape[1]), (Jy1Jy2T.shape[1], 3 * Jy1Jy2T.shape[1]))
-            J1J2T = jax.lax.dynamic_update_slice(J1J2T, J1J2Ti + Jy1Jy2T[i, :], (i * Jy1Jy2T.shape[1], (i - 1) * Jy1Jy2T.shape[1]))
-            return (i + 1, J1J2T), _
-            
-        J1J2T = jax.lax.scan(loop2, init=(1, J1J2T), xs=None, length=J1.Jy.shape[0] - 2)[0][1]
-        J1J2T = J1J2T.at[:Jy1Jy2T.shape[1], :2 * Jy1Jy2T.shape[1]].add(Jy1Jy2T[0, :, Jy1Jy2T.shape[1]:])
-        J1J2T = J1J2T.at[(J1.Jy.shape[0] - 1) * Jy1Jy2T.shape[1]:J1.Jy.shape[0] * Jy1Jy2T.shape[1], (J1.Jy.shape[0] - 2) * Jy1Jy2T.shape[1]:J1.Jy.shape[0] * Jy1Jy2T.shape[1]].add(Jy1Jy2T[-1, :, :2 * Jy1Jy2T.shape[1]])
-        J1J2T = J1J2T.at[-J1.n_dim:, -J1.n_dim:].set(J1.Jbc_left@J2.Jbc_left + J1.Jbc_right@J2.Jbc_right)
-        J1J2T = J1J2T.at[:Jy1Jy2T.shape[1], -J1.n_dim:].set(J1.Jy[0, :, :J1.n_dim]@J2.Jbc_left)
-        J1J2T = J1J2T.at[-J1.n_dim:, :Jy1Jy2T.shape[1]].set(J1.Jbc_left@J2.Jy[0, :, :J1.n_dim].T)
-        J1J2T = J1J2T.at[-Jy1Jy2T.shape[1] - J1.n_dim:-J1.n_dim, -J1.n_dim:].set(J1.Jy[-1, :, -J1.n_dim:]@J2.Jbc_right)
-        J1J2T = J1J2T.at[-J1.n_dim:, -Jy1Jy2T.shape[1] - J1.n_dim:-J1.n_dim].set(J1.Jbc_right@J2.Jy[-1, :, -J2.n_dim:].T)
-        
-        return J1J2T
+#    @jax.jit
+#    def multiply_transpose(J1, J2):
+#        
+#        def loop1(i, _):
+#            return i + 1, np.hstack([J1.Jy[i, :, :J1.n_dim]@J2.Jy[i - 1, :, -J1.n_dim:].T, J1.Jy[i]@J2.Jy[i].T, J1.Jy[i, :, -J1.n_dim:]@J2.Jy[i + 1, :, :J1.n_dim].T])
+#        
+#        Jy1Jy2T = jax.lax.scan(loop1, init=1, xs=None, length=J1.Jy.shape[0] - 2)[1]
+#        Jy1Jy2T = np.vstack([[np.pad(np.hstack([J1.Jy[0]@J2.Jy[0].T, J1.Jy[0, :, -J1.n_dim:]@J2.Jy[1, :, :J1.n_dim].T]), ((0, 0), (J1.Jy.shape[1], 0)))], 
+#                             Jy1Jy2T, 
+#                             [np.pad(np.hstack([J1.Jy[-1, :, :J1.n_dim]@J2.Jy[-2, :, -J1.n_dim:].T, J1.Jy[-1]@J2.Jy[-1].T]), ((0, 0), (0, J1.Jy.shape[1])))]])
+#        
+#        J1J2T = np.pad(np.vstack(J1.Jk)@np.vstack(J2.Jk).T, ((0, J1.n_dim), (0, J2.n_dim)))
+#        
+#        def loop2(carry, _):
+#            i, J1J2T = carry
+#            J1J2Ti = jax.lax.dynamic_slice(J1J2T, (i * Jy1Jy2T.shape[1], (i - 1) * Jy1Jy2T.shape[1]), (Jy1Jy2T.shape[1], 3 * Jy1Jy2T.shape[1]))
+#            J1J2T = jax.lax.dynamic_update_slice(J1J2T, J1J2Ti + Jy1Jy2T[i, :], (i * Jy1Jy2T.shape[1], (i - 1) * Jy1Jy2T.shape[1]))
+#            return (i + 1, J1J2T), _
+#            
+#        J1J2T = jax.lax.scan(loop2, init=(1, J1J2T), xs=None, length=J1.Jy.shape[0] - 2)[0][1]
+#        J1J2T = J1J2T.at[:Jy1Jy2T.shape[1], :2 * Jy1Jy2T.shape[1]].add(Jy1Jy2T[0, :, Jy1Jy2T.shape[1]:])
+#        J1J2T = J1J2T.at[(J1.Jy.shape[0] - 1) * Jy1Jy2T.shape[1]:J1.Jy.shape[0] * Jy1Jy2T.shape[1], (J1.Jy.shape[0] - 2) * Jy1Jy2T.shape[1]:J1.Jy.shape[0] * Jy1Jy2T.shape[1]].add(Jy1Jy2T[-1, :, :2 * Jy1Jy2T.shape[1]])
+#        J1J2T = J1J2T.at[-J1.n_dim:, -J1.n_dim:].set(J1.Jbc_left@J2.Jbc_left + J1.Jbc_right@J2.Jbc_right)
+#        J1J2T = J1J2T.at[:Jy1Jy2T.shape[1], -J1.n_dim:].set(J1.Jy[0, :, :J1.n_dim]@J2.Jbc_left)
+#        J1J2T = J1J2T.at[-J1.n_dim:, :Jy1Jy2T.shape[1]].set(J1.Jbc_left@J2.Jy[0, :, :J1.n_dim].T)
+#        J1J2T = J1J2T.at[-Jy1Jy2T.shape[1] - J1.n_dim:-J1.n_dim, -J1.n_dim:].set(J1.Jy[-1, :, -J1.n_dim:]@J2.Jbc_right)
+#        J1J2T = J1J2T.at[-J1.n_dim:, -Jy1Jy2T.shape[1] - J1.n_dim:-J1.n_dim].set(J1.Jbc_right@J2.Jy[-1, :, -J2.n_dim:].T)
+#        
+#        return J1J2T
 
     @jax.jit
     def lq_factor(self):
 
-        Q_c = np.zeros((self.Jy.shape[0], self.Jy.shape[2], self.Jy.shape[2]))
         R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))
-        R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.n_dim))
-        R_bc = R_bc.at[:self.n_dim].set(self.Jbc_left)
-        R_bc = R_bc.at[-self.n_dim:].set(self.Jbc_right)
-        qi, ri = jax.scipy.linalg.qr(self.Jy[0].T)
-        Q_c = Q_c.at[0].set(qi)
-        R_c = R_c.at[0, -ri.shape[1]:].set(ri[:-self.n_dim])
-        R_bc = R_bc.at[:qi.shape[1]].set(qi.T@R_bc[:qi.shape[1]])
+        R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0] + self.Jmesh.shape[0], self.n_dim + self.Jmesh.shape[0]))
+        R_bc = R_bc.at[:self.n_dim, :self.n_dim].set(self.Jbc_left)
+        R_bc = R_bc.at[-self.n_dim:, :self.n_dim].set(self.Jbc_right)
+        R_bc = R_bc.at[:, self.n_dim:self.n_dim + self.Jmesh.shape[0]].set(self.Jmesh.T)
 
-        def loop_body(carry, _):
-            i, Q_c, R_c, R_bc = carry
-            si = Q_c[i - 1, -self.n_dim:].T@self.Jy[i, :, :self.n_dim].T
-            R_c = R_c.at[i, :self.Jy.shape[2]].set(si)
-            bc = jax.lax.dynamic_slice(R_bc, (i * self.Jy.shape[1], 0), (self.Jy.shape[2], self.n_dim))
-            qi, ri = jax.scipy.linalg.qr(self.Jy[i].T.at[:self.n_dim].set(si[-self.n_dim:]))
-            Q_c = Q_c.at[i].set(qi)
-            R_c = R_c.at[i, -ri.shape[1]:].set(ri[:-self.n_dim])
-            R_bc = jax.lax.dynamic_update_slice(R_bc, qi.T@bc, (i * self.Jy.shape[1], 0))
-            return (i + 1, Q_c, R_c, R_bc), _
+        Jy_0 = np.hstack([self.Jy[0, :, :self.n_dim], self.Jy[0, :, self.n_dim + 1:]])
+        Q, R_0 = jax.scipy.linalg.qr(Jy_0.T)
+        R_c = R_c.at[0, -R_0.shape[1]:].set(R_0[:R_0.shape[1]])
+        R_bc = R_bc.at[:Q.shape[0]].set(Q.T@R_bc[:Q.shape[0]])
 
-        out = jax.lax.scan(loop_body, init=(1, Q_c, R_c, R_bc), xs=None, length=self.Jy.shape[0] - 1)
-        Q_bc, ri = np.linalg.qr(out[0][3][-self.n_dim:])
-        R_bc = out[0][3].at[-self.n_dim:].set(ri)
+        for i in range(1, self.Jmesh.shape[0]):
 
-        return BVPJac_LQ(out[0][1], Q_bc, out[0][2], R_bc)
+            s_i = Q[-self.n_dim - 1:].T@self.Jy[i, :, :self.n_dim + 1].T
+            R_c = R_c.at[i, :s_i.shape[1]].set(s_i[:s_i.shape[1]])
+            Q, R_i = jax.scipy.linalg.qr(np.vstack([s_i[-self.n_dim - i:], self.Jy[i, :, self.n_dim + 1:].T]))
+            R_c = R_c.at[i, -R_i.shape[1]:].set(R_i[:R_i.shape[1]])
+            bc = R_bc[i * self.Jy.shape[1]:i * self.Jy.shape[1] + self.Jy.shape[2] + i - 1]
+            R_bc = R_bc.at[i * self.Jy.shape[1]:i * self.Jy.shape[1] + self.Jy.shape[2] + i - 1].set(Q.T@bc)
+
+        Jy_N = self.Jy[-1, :, :-1]
+        s_N = Q[-self.n_dim - 1:].T@Jy_N[:, :self.n_dim + 1].T
+        R_c = R_c.at[-1, :s_N.shape[1]].set(s_N[:s_N.shape[1]])
+        Q, R_N = jax.scipy.linalg.qr(np.vstack([s_N[-self.n_dim - self.Jmesh.shape[0]:], Jy_N[:, self.n_dim + 1:].T]))
+        R_c = R_c.at[-1, -R_N.shape[1]:].set(R_N[:R_N.shape[1]])
+        bc = R_bc[self.Jmesh.shape[0] * Jy_N.shape[0]:self.Jmesh.shape[0] * Jy_N.shape[0] + Jy_N.shape[1] + self.Jmesh.shape[0] - 1]
+        R_bc = R_bc.at[self.Jmesh.shape[0] * Jy_N.shape[0]:self.Jmesh.shape[0] * Jy_N.shape[0] + Jy_N.shape[1] + self.Jmesh.shape[0] - 1].set(Q.T@bc)
+        R_bc = R_bc.at[-self.Jmesh.shape[0] - self.n_dim:].set(np.linalg.qr(R_bc[-self.Jmesh.shape[0] - self.n_dim:])[1])
+
+        return BVPMMJac_LQ(R_c, R_bc)
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jmesh, self.Jbc_left, self.Jbc_right)
@@ -617,10 +621,8 @@ class BVPMMJac:
 
 class BVPMMJac_LQ:
 
-    def __init__(self, Q_c, Q_bc, R_c, R_bc):
+    def __init__(self, R_c, R_bc):
 
-        self.Q_c = Q_c
-        self.Q_bc = Q_bc
         self.R_c = R_c
         self.R_bc = R_bc
 
@@ -685,13 +687,13 @@ class BVPMMJac_LQ:
         return x
 
     def _tree_flatten(self):
-        children = (self.Q_c, self.Q_bc, self.R_c, self.R_bc)
+        children = (self.R_c, self.R_bc)
         aux_data = {}
         return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
-        return cls(*children[:2], Jbc_left=children[2], Jbc_right=children[3], **aux_data)
+        return cls(*children, **aux_data)
 
 jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
