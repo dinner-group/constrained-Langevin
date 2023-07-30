@@ -5,7 +5,7 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
-def newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=()):
+def newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=(), **kwargs):
 
     if jac is None:
         jac = jax.jacfwd(resid)
@@ -24,7 +24,7 @@ def newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=()):
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=20, tol=1e-9, args=()):
+def newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=20, tol=1e-9, args=(), **kwargs):
 
     if jac_prev is None:
         return gauss_newton(x, resid, jac, max_iter, tol, args)
@@ -54,7 +54,7 @@ def newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=20, 
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=20, tol=1e-9, args=()):
+def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=20, tol=1e-9, J_and_factor=None, args=(), **kwargs):
 
     if jac_prev is None:
         return gauss_newton(x, resid, jac, max_iter, tol, args)
@@ -71,7 +71,10 @@ def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, 
         sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
-    Q, R = np.linalg.qr(jac_prev_sqrtM.T)
+    if J_and_factor is None:
+        Q, R = np.linalg.qr(jac_prev_sqrtM.T)
+    else:
+        Q, R = J_and_factor[1]
 
     def cond(carry):
         x, step, dx = carry
@@ -94,7 +97,7 @@ def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, 
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6, 7))
-def quasi_newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=()):
+def quasi_newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=(), **kwargs):
 
     if jac is None:
         jac = jax.jacfwd(resid)
@@ -137,7 +140,7 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_qn_
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_rattle(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, args), x)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
+def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, args=(), **kwargs):
 
     if inverse_mass is None:
         jac_prev_sqrtM = jac_prev
@@ -147,8 +150,11 @@ def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=
     else:
         sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
-
-    Q, R = np.linalg.qr(jac_prev_sqrtM.T)
+    
+    if J_and_factor is None:
+        Q, R = np.linalg.qr(jac_prev_sqrtM.T)
+    else:
+        Q, R = J_and_factor[1]
 
     def lstsq(b):
         x = Q@jax.scipy.linalg.solve_triangular(R.T, b, lower=True)
@@ -189,7 +195,7 @@ def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_iter=20, tol=1e-9, args=()):
+def newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_iter=20, tol=1e-9, args=(), **kwargs):
 
     if inverse_mass is None:
         jac_prevM = jac_prev
@@ -212,7 +218,7 @@ def newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_iter=20, to
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6, 7))
-def quasi_newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=()):
+def quasi_newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_qn_iter=100, max_newton_iter=20, tol=1e-9, args=(), **kwargs):
 
     if inverse_mass is None:
         jac_prevM = jac_prev
@@ -250,7 +256,7 @@ def quasi_newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass=None, max_qn_it
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, args, True), lambda x:newton_bvp_dense(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, args), x)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
+def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, args=(), **kwargs):
     
     if inverse_mass is None:
         jac_prev_sqrtM = jac_prev
@@ -261,7 +267,11 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
         sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
-    J_LQ = jac_prev_sqrtM.lq_factor()
+    if J_and_factor is None:
+        J_LQ = jac_prev_sqrtM.lq_factor()
+    else:
+        J_LQ = J_and_factor[1]
+
     Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
@@ -296,7 +306,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
-def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, args=()):
+def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, args=(), **kwargs):
     
     if inverse_mass is None:
         jac_prev_sqrtM = jac_prev
@@ -307,7 +317,11 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
         sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
         jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
 
-    J_LQ = jac_prev_sqrtM.lq_factor()
+    if J_and_factor is None:
+        J_LQ = jac_prev_sqrtM.lq_factor()
+    else:
+        J_LQ = J_and_factor[1]
+
     Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
@@ -357,7 +371,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     return x, args, np.all(np.abs(dx) < tol)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
-def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=()):
+def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=(), **kwargs):
 
     if jac is None:
         jac = jax.jacfwd(resid)
