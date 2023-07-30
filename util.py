@@ -602,13 +602,11 @@ class BVPMMJac:
         Jy_N = self.Jy[-1, :, :-1]
         s_N = Q[-self.n_dim - 1:].T@Jy_N[:, :self.n_dim + 1].T
         R_c = R_c.at[-1, :s_N.shape[1]].set(s_N[:s_N.shape[1]])
-        Q, R_N = jax.scipy.linalg.qr(np.vstack([s_N[-self.n_dim - self.Jmesh.shape[0]:], Jy_N[:, self.n_dim + 1:].T]))
-        R_c = R_c.at[-1, -R_N.shape[1]:].set(R_N[:R_N.shape[1]])
-        bc = R_bc[self.Jmesh.shape[0] * Jy_N.shape[0]:self.Jmesh.shape[0] * Jy_N.shape[0] + Jy_N.shape[1] + self.Jmesh.shape[0] - 1]
-        R_bc = R_bc.at[self.Jmesh.shape[0] * Jy_N.shape[0]:self.Jmesh.shape[0] * Jy_N.shape[0] + Jy_N.shape[1] + self.Jmesh.shape[0] - 1].set(Q.T@bc)
-        R_bc = R_bc.at[-self.Jmesh.shape[0] - self.n_dim:].set(np.linalg.qr(R_bc[-self.Jmesh.shape[0] - self.n_dim:])[1])
+        Q, R_N = np.linalg.qr(np.hstack([np.vstack([s_N[-self.n_dim - self.Jmesh.shape[0]:], Jy_N[:, self.n_dim + 1:].T]), R_bc[-s_N.shape[0]:]]))
+        R_c = R_c.at[-1, -R_c.shape[2]:].set(R_N[:R_c.shape[2], :R_c.shape[2]])
+        R_bc = R_bc.at[-R_N.shape[0]:].set(R_N[:, -R_N.shape[1] + R_c.shape[2]:])
 
-        return BVPMMJac_LQ(R_c, R_bc)
+        return BVPMMJac_LQ(R_c, R_bc, self.n_dim, self.n_par, self.Jmesh.shape[0] + 1)
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jmesh, self.Jbc_left, self.Jbc_right)
@@ -621,10 +619,13 @@ class BVPMMJac:
 
 class BVPMMJac_LQ:
 
-    def __init__(self, R_c, R_bc):
+    def __init__(self, R_c, R_bc, n_dim, n_par, n_mesh_intervals):
 
         self.R_c = R_c
         self.R_bc = R_bc
+        self.n_dim = n_dim
+        self.n_par = n_par
+        self.n_mesh_intervals = n_mesh_intervals
 
     @jax.jit
     def solve_triangular_L(self, b):
@@ -649,6 +650,7 @@ class BVPMMJac_LQ:
         x = jax.lax.scan(loop_body, init=(1, x), xs=None, length=self.R_c.shape[0] - 1)[0][1]
         xi = jax.scipy.linalg.solve_triangular(self.R_bc[-self.R_bc.shape[1]:].T, b[-self.R_bc.shape[1]:] - self.R_bc[:-self.R_bc.shape[1]].T@x[:-self.R_bc.shape[1]], lower=True)
         x = x.at[-self.R_bc.shape[1]:].set(xi)
+        x = unpermute_q_mesh(x.T, self.n_dim, self.n_mesh_intervals).T
 
         if is_vector:
             x = x.ravel()
@@ -661,6 +663,8 @@ class BVPMMJac_LQ:
         is_vector = len(b.shape) == 1
         if is_vector:
             b = np.expand_dims(b, 1)
+
+        b = permute_q_mesh(b.T, self.n_dim, self.n_mesh_intervals).T
 
         x = np.zeros((self.R_bc.shape[0], b.shape[1]))
         x_i = jax.scipy.linalg.solve_triangular(self.R_bc[-self.R_bc.shape[1]:], b[-self.R_bc.shape[1]:], lower=False)
@@ -688,7 +692,7 @@ class BVPMMJac_LQ:
 
     def _tree_flatten(self):
         children = (self.R_c, self.R_bc)
-        aux_data = {}
+        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par, "n_mesh_intervals":self.n_mesh_intervals}
         return (children, aux_data)
 
     @classmethod
