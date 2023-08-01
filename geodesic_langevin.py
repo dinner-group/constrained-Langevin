@@ -100,7 +100,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         Jcons = J_and_factor[0]
     
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, args_new, success = nlsol(position_new, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, tol, args=args)
+    position_new, args_new, success, _ = nlsol(position_new, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, tol, J_and_factor=J_and_factor, args=args)
     Jcons = jac_constraint(position_new, *args_new)
     velocity_new = (position_new - position) / dt
 
@@ -117,46 +117,64 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     if reversibility_tol is not None:
         position_rev, momentum_rev, lagrange_multiplier_rev, _, args_rev, success_rev = rattle_drift(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor_new, 
                                                                                                      args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
+        #jax.debug.print("{}", np.max(np.abs(position - position_rev)))
         success = success & success_rev & np.all(np.abs(position - position_rev) < reversibility_tol)
 
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, args_new, success
 
 @partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12, 13, 14))
-def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, 
-                        constraint_args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9, reversibility_tol=None):
+def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None,
+                        args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=100, tol=1e-9, reversibility_tol=None):
     
-    mesh_points = constraint_args[1]
-    ode_model = constraint_args[0]
-    y = position[ode_model.n_par:-1]
-    y = y.reshape((ode_model.n_dim, y.size // ode_model.n_dim), order="F")
-    yp = momentum[ode_model.n_par:-1]
-    yp = yp.reshape((ode_model.n_dim, yp.size // ode_model.n_dim), order="F")
-    mesh_new, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
-    y_new = util.recompute_node_y(y, mesh_points, mesh_new, util.gauss_points)
-    yp_new = util.recompute_node_y(yp, mesh_points, mesh_new, util.gauss_points)
-    position = position.at[ode_model.n_par:-1].set(y_new.ravel(order="F"))
-    momentum = momentum.at[ode_model.n_par:-1].set(yp_new.ravel(order="F"))
-    constraint_args_new = list(constraint_args)
-    constraint_args_new[1] = mesh_new
-    constraint_args_new = tuple(constraint_args_new)
-
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, constraint_args_new, success = rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, None, 
-                                                                                                                       constraint_args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
-
+    if jac_constraint is None:
+        jac_constraint = jax.jacfwd(constraint)
+    
+    if J_and_factor is None:
+        Jcons = jac_constraint(position, *args)
+    else:
+        Jcons = J_and_factor[0]
+        
+    ode_model = args[0]
+    position_new = position + dt * velocity(momentum, inverse_mass)
+    position_new, args_new, success, n_iter = nlsol(position_new, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, J_and_factor=J_and_factor, args=args)
+    
+    def cond(carry):
+        position_0, position_1, mesh_0, mesh_1, args, success, n_iter = carry
+        return (np.any(np.abs(position_0 - position_1) > tol) | np.any(np.abs(mesh_0 - mesh_1) > tol)) & success & (n_iter < max_newton_iter)
+    
+    def loop_body(carry):
+        
+        position_0, position_1, mesh_0, mesh_1, args_new, success, n_iter = carry
+        y = position_1[ode_model.n_par:-1]
+        y = y.reshape((ode_model.n_dim, y.size // ode_model.n_dim), order="F")
+        mesh_2 = util.recompute_mesh(y, mesh_1)[0]
+        args_new = list(args_new)
+        args_new[1] = mesh_2
+        args_new = tuple(args_new)
+        position_2, args_new, success_inner, n_iter_inner = nlsol(position_1, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, J_and_factor=J_and_factor, args=args_new)
+        return position_1, position_2, mesh_1, mesh_2, args_new, success & success_inner, n_iter + n_iter_inner
+    
+    init = (position, position_new, args[1], args[1], args, True, n_iter)
+    position_0, position_new, mesh_0, mesh_new, args_new, success, n_iter = jax.lax.while_loop(cond, loop_body, init)
+    velocity_new = (position_new - position) / dt
+    
+    if inverse_mass is None:
+        momentum_new = velocity_new
+    elif len(inverse_mass.shape) == 1:
+        momentum_new = velocity_new / inverse_mass
+    else:
+        R = jax.scipy.linalg.cholesky(inverse_mass)
+        momentum_new = jax.scipy.linalg.cho_solve((R, False), velocity_new)
+    
+    Jcons = jac_constraint(position_new, *args_new)
+    momentum_new, lagrange_multiplier_new, J_and_factor_new = linsol(Jcons, momentum_new, None, inverse_mass)
+    
     if reversibility_tol is not None:
-        position_rev, momentum_rev, lagrange_multiplier_rev, _, constraint_args_rev, success_rev = rattle_drift_bvp_mm(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, inverse_mass, 
-                                                                                                                       None, constraint_args_new, nlsol, linsol, max_newton_iter, tol, reversibility_tol=None)
-        success = success & success_rev
-        n_mesh_intervals = mesh_new.size - 1 
-        n_points = (n_mesh_intervals * util.gauss_points.size + 1)
-        y0 = position[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
-        yrev = position_rev[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
-        mesh_rev = constraint_args_rev[1]
-        yrev_interp = util.interpolate(yrev, mesh_rev, util.fill_mesh(mesh_new))
-        success = success & np.all(np.abs(yrev_interp - y0) < reversibility_tol) & np.all(np.abs(position[:ode_model.n_par] - position_rev[:ode_model.n_par]) < reversibility_tol)\
-                & np.all(np.abs(position[ode_model.n_par + n_points * ode_model.n_dim:] - position_rev[ode_model.n_par + n_points * ode_model.n_dim:]) < reversibility_tol)
-
-    return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, constraint_args_new, success
+        position_rev, momentum_rev, lagrange_multiplier_rev, _, args_rev, success_rev = rattle_drift_bvp_mm(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint,
+                                                                                                           inverse_mass, J_and_factor_new, args_new, nlsol, linsol, max_newton_iter, reversibility_tol=None)
+        success = success & success_rev & np.all(np.abs(position - position_rev) < reversibility_tol) & np.all(np.abs(args[1] - args_rev[1]) < reversibility_tol)
+        
+    return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, args_new, success & np.all(position_0 - position_new < tol) & np.all(mesh_0 - mesh_new < tol)
 
 
 @partial(jax.jit, static_argnums=(5, 6, 7, 11))
