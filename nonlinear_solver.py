@@ -272,7 +272,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
     else:
         J_LQ = J_and_factor[1]
 
-    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
+    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.shape[0] - jac_prev_sqrtM.Jk.shape[0]), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
 
@@ -280,8 +280,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
         w = J_LQ.solve_triangular_L(b)
         out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
         u = w - E@out_k
-        t = J_LQ.solve_triangular_R(u)
-        out_y = jac_prev_sqrtM.left_multiply(t)[jac_prev_sqrtM.n_par:-1]
+        out_y = J_LQ.Q_right_multiply(u)
         out = np.concatenate([out_k[:jac_prev_sqrtM.n_par], out_y, out_k[-1:]])
 
         if inverse_mass is not None:
@@ -322,7 +321,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     else:
         J_LQ = J_and_factor[1]
 
-    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.n_dim), (0, 0)))
+    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.shape[0] - jac_prev_sqrtM.Jk.shape[0]), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
 
@@ -330,8 +329,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
         w = J_LQ.solve_triangular_L(b)
         out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
         u = w - E@out_k
-        t = J_LQ.solve_triangular_R(u)
-        out_y = jac_prev_sqrtM.left_multiply(t)[jac_prev_sqrtM.n_par:-1]
+        out_y = J_LQ.Q_right_multiply(u)
         out = np.concatenate([out_k[:jac_prev_sqrtM.n_par], out_y, out_k[-1:]])
 
         if inverse_mass is not None:

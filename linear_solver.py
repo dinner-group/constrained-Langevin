@@ -79,7 +79,7 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
         J_and_factor = (J, JsqrtMinv.lq_factor())
 
     J_LQ = J_and_factor[1]
-    Jk = np.pad(np.vstack(JsqrtMinv.Jk), ((0, JsqrtMinv.n_dim), (0, 0)))
+    Jk = np.pad(np.vstack(JsqrtMinv.Jk), ((0, JsqrtMinv.shape[0] - JsqrtMinv.Jk.shape[0]), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
 
@@ -87,14 +87,13 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
         w = J_LQ.solve_triangular_L(b)
         out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
         u = w - E@out_k
-        t = J_LQ.solve_triangular_R(u)
-        out_y = JsqrtMinv.left_multiply(t)[JsqrtMinv.n_par:-1]
+        out_y = J_LQ.Q_right_multiply(u)
         out = np.concatenate([out_k[:JsqrtMinv.n_par], out_y, out_k[-1:]])
 
         if inverse_mass is not None:
             out = out / sqrtMinv
 
-        return out, t
+        return out, u
 
     JMinvb = JsqrtMinv.right_multiply(b)
     out = lstsq(JMinvb)
