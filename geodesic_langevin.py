@@ -83,8 +83,8 @@ def rattle_kick(position, momentum, dt, potential, constraint, jac_constraint=No
     else:
         Jcons = J_and_factor[0]
 
+    force, lagrange_multiplier_new, J_and_factor = linsol(Jcons, force, J_and_factor, inverse_mass)
     momentum_new = momentum - dt * force
-    momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor, inverse_mass)
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, J_and_factor, args
 
@@ -202,8 +202,8 @@ def rattle_noise(position, momentum, dt, friction, prng_key, potential, constrai
         R = jax.scipy.linalg.cholesky(inverse_mass)
         W = noise_scale * jax.scipy.linalg.solve_triangular(R, W, lower=False)
 
+    W, lagrange_multiplier_new, J_and_factor = linsol(Jcons, W, J_and_factor, inverse_mass)
     momentum_new = drag * momentum + W
-    momentum_new, lagrange_multiplier_new, J_and_factor = linsol(Jcons, momentum_new, J_and_factor, inverse_mass)
 
     return position, momentum_new, lagrange_multiplier_new, key, args
 
