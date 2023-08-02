@@ -391,7 +391,7 @@ class BVPJac_LQ:
         return x
 
     @jax.jit
-    def left_multiply_Q(self, v):
+    def Q_right_multiply(self, v):
         
         is_vector = len(v.shape) == 1
         if is_vector:
@@ -627,12 +627,6 @@ class BVPMMJac:
             bc = R_bc[i * self.Jy.shape[1]:i * self.Jy.shape[1] + self.Jy.shape[2] + i - 1]
             R_bc = R_bc.at[i * self.Jy.shape[1]:i * self.Jy.shape[1] + self.Jy.shape[2] + i - 1].set(Q.T@bc)
 
-        #Jy_N = self.Jy[-1, :, :-1]
-        #s_N = Q[-self.n_dim - 1:].T@Jy_N[:, :self.n_dim + 1].T
-        #R_c = R_c.at[-1, :s_N.shape[1]].set(s_N[:s_N.shape[1]])
-        #Q, R_N = np.linalg.qr(np.hstack([np.vstack([s_N[-self.n_dim - self.Jmesh.shape[0]:], Jy_N[:, self.n_dim + 1:].T]), R_bc[-s_N.shape[0]:]]))
-        #R_c = R_c.at[-1, -R_c.shape[2]:].set(R_N[:R_c.shape[2], :R_c.shape[2]])
-        #R_bc = R_bc.at[-R_N.shape[0]:].set(R_N[:, -R_N.shape[1] + R_c.shape[2]:])
         Jy_N = self.Jy[-1, :, :-1]
         s_N = Q[-self.n_dim - 1:].T@Jy_N[:, :self.n_dim + 1].T
         R_c = R_c.at[-1, :s_N.shape[1]].set(s_N[:s_N.shape[1]])
@@ -727,7 +721,7 @@ class BVPMMJac_LQ:
         return x
 
     @jax.jit
-    def left_multiply_Q(self, v):
+    def Q_right_multiply(self, v):
 
         is_vector = len(v.shape) == 1
         if is_vector:
