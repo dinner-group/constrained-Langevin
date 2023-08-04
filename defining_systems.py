@@ -41,7 +41,7 @@ def periodic_bvp_colloc_resid_interval(y, k, period, interval_endpoints, ode_mod
     poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
     poly = jax.vmap(poly_interval)(colloc_points)
     poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
-    return np.ravel(poly_deriv - period * jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly), order="C")
+    return np.ravel(ode_model.not_algebraic * poly_deriv - period * jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly), order="C")
 
 @jax.jit
 def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points):
