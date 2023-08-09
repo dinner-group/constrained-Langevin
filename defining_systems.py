@@ -7,14 +7,14 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @jax.jit
-def fixed_point(q, ode_model, **args):
+def fixed_point(q, ode_model, *args):
 
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + ode_model.n_dim]
     return ode_model.f(0., y, k)
 
 @jax.jit
-def fully_extended_hopf(q, ode_model, **args):
+def fully_extended_hopf(q, ode_model, *args):
     
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + ode_model.n_dim]
