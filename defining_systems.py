@@ -51,6 +51,28 @@ def periodic_bvp_colloc_resid_interval(y, k, period, interval_endpoints, ode_mod
     return np.ravel(ode_model.not_algebraic * poly_deriv - period * jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly), order="C")
 
 @jax.jit
+def fully_extended_hopf_2n(q, ode_model, *args):
+    
+    k = q[:ode_model.n_par]
+    y = q[ode_model.n_par:ode_model.n_par + ode_model.n_dim]
+    eigvec = q[ode_model.n_par + ode_model.n_dim:ode_model.n_par + 2 * ode_model.n_dim] 
+    eigval = q[ode_model.n_par + 2 * ode_model.n_dim] 
+    ode_rhs, r = jax.jvp(ode_model.f, (0., y, k), (0., eigvec, np.zeros_like(k)))
+    _, r = jax.jvp(ode_model.f, (0., y, k), (0., r, np.zeros_like(k)))
+    
+    return np.concatenate([ode_rhs,
+                           r - eigval * eigvec,
+                           np.ravel(eigvec@eigvec) - 1
+                          ])
+
+@jax.jit
+def fully_extended_hopf_2n_log(q, ode_model, *args):
+    
+    eigval = -np.exp(q[ode_model.n_par + 2 * ode_model.n_dim])
+    q = q.at[ode_model.n_par + 2 * ode_model.n_dim].set(eigval)
+    return fully_extended_hopf_2n(q, ode_model, *args)
+
+@jax.jit
 def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points):
 
     n_mesh_intervals = mesh_points.size - 1
