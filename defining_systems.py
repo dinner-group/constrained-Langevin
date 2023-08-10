@@ -22,34 +22,22 @@ def fully_extended_hopf(q, ode_model, *args):
     evec_imag = q[ode_model.n_par + 2 * ode_model.n_dim:ode_model.n_par + 3 * ode_model.n_dim]
     eval_imag = q[ode_model.n_par + 3 * ode_model.n_dim]
     
-    ode_rhs = ode_model.f(0., y, k)
-    jac = jax.jacfwd(ode_model.f, argnums=1)(0., y, k)
+    ode_rhs, jvp_real = jax.jvp(ode_model.f, (0., y, k), (0., evec_real, np.zeros_like(k)))
+    ode_rhs, jvp_imag = jax.jvp(ode_model.f, (0., y, k), (0., evec_imag, np.zeros_like(k)))
     evec_abs = evec_real**2 + evec_imag**2
     
     return np.concatenate([ode_rhs,
-                           jac@evec_real + eval_imag * evec_imag,
-                           jac@evec_imag - eval_imag * evec_real,
+                           jvp_real + eval_imag * evec_imag,
+                           jvp_imag - eval_imag * evec_real,
                            np.array([evec_abs.sum() - 1]),
                            np.array([evec_imag[0]])])
 
 @jax.jit
 def fully_extended_hopf_log(q, ode_model, *args):
     
-    k = q[:ode_model.n_par]
-    y = q[ode_model.n_par:ode_model.n_par + ode_model.n_dim]
-    evec_real = q[ode_model.n_par + ode_model.n_dim:ode_model.n_par + 2 * ode_model.n_dim]
-    evec_imag = q[ode_model.n_par + 2 * ode_model.n_dim:ode_model.n_par + 3 * ode_model.n_dim]
     eval_imag = np.exp(q[ode_model.n_par + 3 * ode_model.n_dim])
-    
-    ode_rhs = ode_model.f(0., y, k)
-    jac = jax.jacfwd(ode_model.f, argnums=1)(0., y, k)
-    evec_abs = evec_real**2 + evec_imag**2
-    
-    return np.concatenate([ode_rhs,
-                           jac@evec_real + eval_imag * evec_imag,
-                           jac@evec_imag - eval_imag * evec_real,
-                           np.array([evec_abs.sum() - 1]),
-                           np.array([evec_imag[0]])])
+    q = q.at[ode_model.n_par + 3 * ode_model.n_dim].set(eval_imag)
+    return fully_extended_hopf(q, ode_model, *args)
 
 @jax.jit
 def periodic_bvp_colloc_resid_interval(y, k, period, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points):
