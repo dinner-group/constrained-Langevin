@@ -73,7 +73,7 @@ def fully_extended_hopf_2n_log(q, ode_model, *args):
     return fully_extended_hopf_2n(q, ode_model, *args)
 
 @jax.jit
-def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points):
+def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points, *args):
 
     n_mesh_intervals = mesh_points.size - 1
     k = q[:ode_model.n_par]
@@ -91,7 +91,7 @@ def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), c
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0]])
 
 @jax.jit
-def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points):
+def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points, *args):
 
     n_mesh_intervals = mesh_points.size - 1
     k = q[:ode_model.n_par]
@@ -124,7 +124,7 @@ def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model):
     return n_mesh_intervals * mesh_mass_interval[:-1] - mesh_mass
 
 @partial(jax.jit, static_argnums=(2,))
-def periodic_bvp_mm_colloc_resid(q, ode_model, n_mesh_intervals=60, colloc_points_unshifted=util.gauss_points):
+def periodic_bvp_mm_colloc_resid(q, ode_model, n_mesh_intervals=60, colloc_points_unshifted=util.gauss_points, *args):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * util.gauss_points.size + 1
@@ -144,7 +144,7 @@ def periodic_bvp_mm_colloc_resid(q, ode_model, n_mesh_intervals=60, colloc_point
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
 
 @partial(jax.jit, static_argnums=(2,))
-def periodic_bvp_mm_colloc_jac(q, ode_model, n_mesh_intervals=60, colloc_points_unshifted=util.gauss_points):
+def periodic_bvp_mm_colloc_jac(q, ode_model, n_mesh_intervals=60, colloc_points_unshifted=util.gauss_points, *args):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * util.gauss_points.size + 1
@@ -402,14 +402,25 @@ def brusselator_log_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     return E
 
 @jax.jit
-def morris_lecar_bvp_potential(q, mesh_points=np.linspace(0, 1, 61), bounds=None):
+def morris_lecar_hb_potential(q, ode_model, bounds=None):
+    k = q[:ode_model.n_par]
+    hb_eval = q[ode_model.n_par + 2 * ode_model.n_dim]
+    E = 0
+    E += np.where(hb_eval < -9, 100 * (hb_eval + 9)**2 / 2, 0)
+    if bounds is not None:
+        E += np.where(k < bounds[:, 0], 100 * (k - bounds[:, 0])**2 / 2, 0).sum()
+        E += np.where(k > bounds[:, 1], 100 * (k - bounds[:, 1])**2 / 2, 0).sum()
+    return E
+
+@jax.jit
+def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), bounds=None):
 
     n_mesh_intervals = mesh_points.size - 1
     E = 0
 
     n_points = (n_mesh_intervals * util.gauss_points.size + 1)
-    k = q[:model.Morris_Lecar.n_par]
-    y = q[model.Morris_Lecar.n_par:model.Morris_Lecar.n_par + n_points * model.Morris_Lecar.n_dim].reshape(model.Morris_Lecar.n_dim, n_points, order="F")
+    k = q[:ode_model.n_par]
+    y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     min_arclength = 0.3
     _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
@@ -427,57 +438,6 @@ def morris_lecar_bvp_potential(q, mesh_points=np.linspace(0, 1, 61), bounds=None
         E += np.where(k > bounds[:, 1], 100 * (k - bounds[:, 1])**2, 0).sum()
 
     return E
-
-@jax.jit
-def morris_lecar_bvp_interval(y, k, period, colloc_points, node_points):
-
-    ml = model.Morris_Lecar(k)
-    dd = util.divided_difference(node_points, y)
-    poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
-    poly = jax.vmap(poly_interval)(colloc_points)
-    poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
-    return np.ravel(poly_deriv - jax.vmap(lambda yy:period * ml.f(0., yy, k))(poly), order="C")
-
-@jax.jit
-def morris_lecar_bvp(q, mesh_points=np.linspace(0, 1, 61), bounds=None):
-    
-    n_mesh_intervals = mesh_points.size - 1
-    k = q[:model.Morris_Lecar.n_par]
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
-    y = q[model.Morris_Lecar.n_par:model.Morris_Lecar.n_par + n_points * model.Morris_Lecar.n_dim].reshape((model.Morris_Lecar.n_dim, n_points), order="F")
-    period = q[model.Morris_Lecar.n_par + n_points * model.Morris_Lecar.n_dim]
-
-    def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
-        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Morris_Lecar.n_dim, util.gauss_points.size + 1))
-        r_i = morris_lecar_bvp_interval(y_i, k, period, colloc_points, node_points)
-        return i + 1, r_i
-
-    colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
-    return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0]])
-
-@jax.jit
-def morris_lecar_bvp_jac(q, mesh_points=np.linspace(0, 1, 61), bounds=None):
-
-    n_mesh_intervals = mesh_points.size - 1
-    k = q[:model.Morris_Lecar.n_par]
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
-    y = q[model.Morris_Lecar.n_par:model.Morris_Lecar.n_par + n_points * model.Morris_Lecar.n_dim].reshape((model.Morris_Lecar.n_dim, n_points), order="F")
-    period = q[model.Morris_Lecar.n_par + n_points * model.Morris_Lecar.n_dim]
-    
-    def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
-        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Morris_Lecar.n_dim, util.gauss_points.size + 1))
-        Jy_i = jax.jacfwd(morris_lecar_bvp_interval, argnums=0)(y_i, k, period, colloc_points, node_points)\
-                .reshape((util.gauss_points.size * model.Morris_Lecar.n_dim, (util.gauss_points.size + 1) * model.Morris_Lecar.n_dim), order="F")
-        Jk_i = jax.jacfwd(morris_lecar_bvp_interval, argnums=1)(y_i, k, period, colloc_points, node_points)
-        Jw_i = jax.jacfwd(morris_lecar_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
-        return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
-
-    J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], model.Morris_Lecar.n_dim, model.Morris_Lecar.n_par)
-    return J
 
 @partial(jax.jit, static_argnums=(1,))
 def brusselator_bvp_fourier(q, fft_points=500):
