@@ -48,7 +48,9 @@ def periodic_bvp_colloc_resid_interval(y, k, period, interval_endpoints, ode_mod
     poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
     poly = jax.vmap(poly_interval)(colloc_points)
     poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
-    return np.ravel(ode_model.not_algebraic * poly_deriv - period * jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly), order="C")
+    f_interval = jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly)
+    f_interval = np.where(ode_model.not_algebraic, period * f_interval, f_interval)
+    return np.ravel(ode_model.not_algebraic * poly_deriv - f_interval, order="C")
 
 @jax.jit
 def fully_extended_hopf_2n(q, ode_model, *args):
