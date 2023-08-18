@@ -1007,6 +1007,45 @@ class Morris_Lecar_nondim:
     def _tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
 
+class Morris_Lecar_log_nondim:
+
+    n_dim = 3
+    n_par = 16
+    not_algebraic = 1
+    
+    def __init__(self, par, **kwargs):
+        self.par = par
+
+    @jax.jit
+    def f(self, t, y, par=None):
+
+        if par is None:
+            par = self.par
+
+        dy = np.zeros_like(y)
+        dy = dy.at[0].set(par[0] - par[1] * (y[0] - par[2]) - par[3] * np.exp(y[1]) * (y[0] - 1) - par[4] * np.exp(y[2]) * (y[0] - par[5]) - par[6] / np.cosh((y[0] - par[7]) / par[8])**2 * (y[0] - par[5]))
+        dy = dy.at[1].set(((1 + np.tanh((y[0] - par[9]) / par[10])) * np.exp(-y[1]) / 2 - 1) * np.cosh((y[0] - par[9]) / par[11]))
+        dy = dy.at[2].set(np.exp(par[12]) * ((1 + np.tanh((y[0] - par[13]) / par[14])) * np.exp(-y[2]) / 2 - 1) * np.cosh((y[0] - par[13]) / par[15]))
+
+        return dy
+
+    @jax.jit
+    def jac(self, t, y, par=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, par)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
+    def _tree_flatten(self):
+        children = (self.par,)
+        aux_data = {}
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
 class Pharyngeal_Minimal_Syn:
 
     n_dim = 17
@@ -1104,6 +1143,7 @@ jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Bruss
 jax.tree_util.register_pytree_node(Brusselator_log, Brusselator_log._tree_flatten, Brusselator_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar_nondim, Morris_Lecar_nondim._tree_flatten, Morris_Lecar_nondim._tree_unflatten)
+jax.tree_util.register_pytree_node(Morris_Lecar_log_nondim, Morris_Lecar_nondim._tree_flatten, Morris_Lecar_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log, Repressilator_log._tree_flatten, Repressilator_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log_n, Repressilator_log_n._tree_flatten, Repressilator_log_n._tree_unflatten)
