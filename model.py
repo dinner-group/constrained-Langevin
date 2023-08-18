@@ -631,7 +631,11 @@ class KaiABC_log:
         yfull = yfull.at[0].set(np.log(1 - self.conservation_law[0, 1:-1]@np.exp(y)))
         yfull = yfull.at[1:-1].set(y)
         yfull = yfull.at[-1].set(np.log(a0 - self.conservation_law[1, 1:-1]@np.exp(y)))
-        ydot = self.S[1:-1]@(np.exp(par.at[self.ind_ATP].add(np.log(ATPfrac)) + yfull@self.K)) / np.exp(y)
+
+        def loop_body(i, _):
+            return i + 1, self.S[i]@np.exp(par + yfull@self.K.at[i].add(-1))
+        ydot = jax.lax.scan(loop_body, init=1, xs=None, length=self.n_dim)[1]
+
         return ydot
 
     @jax.jit
