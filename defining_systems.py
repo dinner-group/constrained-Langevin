@@ -415,7 +415,7 @@ def morris_lecar_hb_potential(q, ode_model, bounds=None):
     return E
 
 @jax.jit
-def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), bounds=None):
+def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), bounds=None, bounds_membrane_voltage=None):
 
     n_mesh_intervals = mesh_points.size - 1
     E = 0
@@ -432,8 +432,32 @@ def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), 
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
     E += np.where(mesh_density_peak >= 5, (mesh_density_peak - 5)**2, 0)
 
-    E += 1e-2 * (util.smooth_max(y[0]) - 35)**2
-    E += 1e-2 * (util.smooth_max(-y[0]) - 50)**2
+    if bounds_membrane_potential is not None:
+        E += 1e-2 * (util.smooth_max(y[0]) - bounds_membrane_voltage[1])**2
+        E += 1e-2 * (-util.smooth_max(-y[0]) - bounds_membrane_voltage[0])**2
+
+    if bounds is not None:
+        E += np.where(k < bounds[:, 0], 100 * (k - bounds[:, 0])**2, 0).sum()
+        E += np.where(k > bounds[:, 1], 100 * (k - bounds[:, 1])**2, 0).sum()
+
+    return E
+
+@partial(jax.jit, static_argnums=(2,))
+def morris_lecar_mm_bvp_potential(q, ode_model, n_mesh_intervals=60, bounds=None, bounds_membrane_voltage=None):
+
+    E = 0
+
+    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    k = q[:ode_model.n_par]
+    y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
+    arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
+    min_arclength = 0.3
+    
+    E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
+
+    if bounds_membrane_voltage is not None:
+        E += (util.smooth_max(y[0]) - bounds_membrane_voltage[1])**2
+        E += (-util.smooth_max(-y[0]) - bounds_membrane_voltage[0])**2
 
     if bounds is not None:
         E += np.where(k < bounds[:, 0], 100 * (k - bounds[:, 0])**2, 0).sum()
