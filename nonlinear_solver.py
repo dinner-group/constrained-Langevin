@@ -368,6 +368,81 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, args, np.all(np.abs(dx) < tol), n_iter
 
+@partial(jax.jit, static_argnums=(1, 3, 5, 6))
+def quasi_newton_bvp_symm_broyden_resid(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, max_memory=20, J_and_factor=None, args=(), **kwargs):
+   
+    return
+    #TODO incomplete
+    if inverse_mass is None:
+        jac_prev_sqrtM = jac_prev
+    elif len(inverse_mass.shape) == 1:
+        sqrtMinv = np.sqrt(inverse_mass)
+        jac_prev_sqrtM = jac_prev.right_multiply_diag(sqrtMinv)
+    else:
+        sqrtMinv = jax.scipy.linalg.cholesky(inverse_mass)
+        jac_prev_sqrtM = jac_prev@jax.scipy.linalg.cholesky(inverse_mass)
+
+    if J_and_factor is None:
+        J_LQ = jac_prev_sqrtM.lq_factor()
+    else:
+        J_LQ = J_and_factor[1]
+
+    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.shape[0] - jac_prev_sqrtM.Jk.shape[0]), (0, 0)))
+    E = J_LQ.solve_triangular_L(Jk)
+    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+
+    def lstsq(b):
+        w = J_LQ.solve_triangular_L(b)
+        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
+        u = w - E@out_k
+        out_y = J_LQ.Q_right_multiply(u)
+        out = np.concatenate([out_k[:jac_prev_sqrtM.n_par], out_y, out_k[-1:]])
+
+        if inverse_mass is not None:
+            if len(inverse_mass.shape) == 1:
+                out = sqrtMinv * out
+            else:
+                out = sqrtMinv@out
+
+        return out
+
+    r = resid(x, *args)
+    dx = lstsq(-r)
+    x = x + dx
+    step_size = 1
+    head_index = 0
+    memory = np.zeros((max_memory, r.size))
+    memory = memory.at[head_index].set(r)
+
+    def cond(carry):
+        x, step, memory, head_index, contraction_factor, step_size = carry
+        r = memory[head_index]
+        return (step < max_iter) & np.any(np.abs(r) > tol) & (contraction_factor < 1.5)
+
+    def loop_body(carry):
+        x, step, memory, head_index, contraction_factor, step_size = carry
+        x = x + dx
+        r_prev = memory[head_index]
+        head_index = (head_index + 1) % max_memory
+        r = resid(x, *args)
+        memory[head_index] = r
+        contraction_factor = np.sqrt(np.max(np.abs(r)) / np.max(np.abs(r_prev)))
+        step_size = step_size / (1 - 2 * contraction_factor)
+        dr = r - r_prev
+        dr = dr / dr.T@dr
+        v = (1 - dr.T@r) * r
+
+        return x, step + 1, dx, dx_prev, projection2, contraction_factor
+
+    def broyden_update(head_index, _):
+        head_index, v, memory = carry
+
+        return ((head_index - 1) % max_memory, v, memory), _
+
+    init = (x, 1, dx, dx_prev, projection2, contraction_factor)
+    x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
+    return x, args, np.all(np.abs(dx) < tol), n_iter
+
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=(), **kwargs):
 
