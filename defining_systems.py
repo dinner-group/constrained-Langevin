@@ -442,8 +442,8 @@ def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), 
 
     return E
 
-@partial(jax.jit, static_argnums=(2,))
-def morris_lecar_mm_bvp_potential(q, ode_model, n_mesh_intervals=60, bounds=None, bounds_membrane_voltage=None):
+@partial(jax.jit, static_argnames=("n_mesh_intervals",))
+def morris_lecar_mm_bvp_potential(q, ode_model, colloc_points_unshifted=util.gauss_points, bounds=None, bounds_membrane_voltage=None, n_mesh_intervals=60):
 
     E = 0
 
