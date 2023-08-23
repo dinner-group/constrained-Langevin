@@ -131,15 +131,15 @@ def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_poi
     return x
 
 @partial(jax.jit, static_argnums=(1, 2))
-def unpermute_q_mesh(x, n_dim, n_mesh_intervals, gauss_points=gauss_points):
+def unpermute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points):
     
     is_vector = len(x.shape) == 1
     if is_vector:
         x = np.expand_dims(x, 0)
 
-    y_and_mesh = x[:, n_dim:-n_dim * gauss_points.size].reshape((x.shape[0], n_dim * gauss_points.size + 1, n_mesh_intervals - 1), order="F")
-    x = np.hstack([x[:, :n_dim], y_and_mesh[:, :-1, :].reshape((x.shape[0], n_dim * gauss_points.size * (n_mesh_intervals - 1)), order="F"), 
-                   x[:, -n_dim * gauss_points.size:],
+    y_and_mesh = x[:, n_dim:-n_dim * colloc_points_unshifted.size].reshape((x.shape[0], n_dim * colloc_points_unshifted.size + 1, n_mesh_intervals - 1), order="F")
+    x = np.hstack([x[:, :n_dim], y_and_mesh[:, :-1, :].reshape((x.shape[0], n_dim * colloc_points_unshifted.size * (n_mesh_intervals - 1)), order="F"), 
+                   x[:, -n_dim * colloc_points_unshifted.size:],
                    y_and_mesh[:, -1:, :].reshape((x.shape[0], n_mesh_intervals - 1), order="F")])
 
     if is_vector:
