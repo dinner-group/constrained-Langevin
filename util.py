@@ -6,7 +6,9 @@ jax.config.update("jax_enable_x64", True)
 
 midpoint = np.array([0])
 lobatto_points_3 = np.array([-1, 0, 1])
-gauss_points = np.array([-np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5)), -np.sqrt(3 / 7 - (2 / 7) * np.sqrt(6 / 5)), np.sqrt(3 / 7 - (2 / 7) * np.sqrt(6 / 5)), np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5))])
+gauss_points_2 = np.array([-np.sqrt(1/3), np.sqrt(1/3)])
+gauss_points_3 = np.array([-np.sqrt(3/5), 0, np.sqrt(3/5)])
+gauss_points = np.array([-np.sqrt(3/7 + (2/7) * np.sqrt(6/5)), -np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 + (2/7) * np.sqrt(6/5))])
 gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 
 @jax.jit
@@ -444,6 +446,7 @@ class BVPMMJac:
         else:
             self.Jbc_right = Jbc_right
 
+
     @jax.jit
     def todense(self):
 
@@ -642,16 +645,16 @@ class BVPMMJac:
         Q_bc, R_bc_N = np.linalg.qr(R_bc[-self.Jmesh.shape[0] - self.n_dim:])
         R_bc = R_bc.at[-self.Jmesh.shape[0] - self.n_dim:].set(R_bc_N)
 
-        return BVPMMJac_LQ(Q_c, Q_bc, R_c, R_bc, self.n_dim, self.n_par)
+        return BVPMMJac_LQ(Q_c, Q_bc, R_c, R_bc, self.n_dim, self.n_par, self.colloc_points_unshifted)
     
     def _tree_flatten(self):
-        children = (self.Jy, self.Jk, self.Jmesh, self.Jbc_left, self.Jbc_right)
-        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par, "colloc_points_unshifted":self.colloc_points_unshifted}
+        children = (self.Jy, self.Jk, self.Jmesh, self.Jbc_left, self.Jbc_right, self.colloc_points_unshifted)
+        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
         return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
-        return cls(*children[:3], Jbc_left=children[3], Jbc_right=children[4], **aux_data)
+        return cls(*children[:3], Jbc_left=children[3], Jbc_right=children[4], colloc_points_unshifted=children[5], **aux_data)
 
 class BVPMMJac_LQ:
 
@@ -762,13 +765,13 @@ class BVPMMJac_LQ:
         return v
 
     def _tree_flatten(self):
-        children = (self.Q_c, self.Q_bc, self.R_c, self.R_bc)
-        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par, "colloc_points_unshifted":self.colloc_points_unshifted}
+        children = (self.Q_c, self.Q_bc, self.R_c, self.R_bc, self.colloc_points_unshifted)
+        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
         return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
-        return cls(*children, **aux_data)
+        return cls(*children[:4], **aux_data, colloc_points_unshifted=children[4])
 
 jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
