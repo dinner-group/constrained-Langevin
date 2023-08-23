@@ -149,7 +149,7 @@ def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gaus
 def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60):
 
     k = q[:ode_model.n_par]
-    n_points = n_mesh_intervals * util.gauss_points.size + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
     period = q[ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
@@ -157,17 +157,17 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_
 
     def loop_body(i, _):
         interval_endpoints = jax.lax.dynamic_slice(mesh_points, (i,), (2,))
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (ode_model.n_dim, util.gauss_points.size + 1))
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
         Jy_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=0)(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
         Jk_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=1)(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
         Jw_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=2)(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
         Jm_i = jax.jacfwd(periodic_bvp_colloc_resid_interval, argnums=3)(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
-        Jy_i = Jy_i.reshape((util.gauss_points.size * ode_model.n_dim, (util.gauss_points.size + 1) * ode_model.n_dim), order="F")
+        Jy_i = Jy_i.reshape((colloc_points_unshifted.size * ode_model.n_dim, (colloc_points_unshifted.size + 1) * ode_model.n_dim), order="F")
 
         return i + 1, (np.hstack([Jy_i[:, :ode_model.n_dim], Jm_i[:, :1], Jy_i[:, ode_model.n_dim:], Jm_i[:, 1:2]]), np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
 
-    Jmesh_y = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points[1:-1], ode_model)
-    Jmesh_m = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points[1:-1], ode_model)
+    Jmesh_y = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points[1:-1], ode_model, colloc_points_unshifted)
+    Jmesh_m = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points[1:-1], ode_model, colloc_points_unshifted)
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
     Jmesh = util.permute_q_mesh(Jmesh, ode_model.n_dim, n_mesh_intervals)
 
