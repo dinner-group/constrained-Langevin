@@ -425,13 +425,14 @@ class BVPJac_LQ:
 
 class BVPMMJac:
 
-    def __init__(self, Jy, Jk, Jmesh, n_dim, n_par, Jbc_left=None, Jbc_right=None):
+    def __init__(self, Jy, Jk, Jmesh, n_dim, n_par, Jbc_left=None, Jbc_right=None, colloc_points_unshifted=gauss_points):
         self.Jy = Jy
         self.Jk = Jk
         self.Jmesh = Jmesh
         self.n_dim = n_dim
         self.n_par = n_par
         self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim + Jmesh.shape[0], Jy.shape[0] * Jy.shape[1] + n_dim + Jmesh.shape[0] + Jk.shape[2]))
+        self.colloc_points_unshifted = colloc_points_unshifted
 
         if Jbc_left is None:
             self.Jbc_left = -np.identity(n_dim)
@@ -470,7 +471,8 @@ class BVPMMJac:
             return (i + 1, Jy_dense, Jm_dense), _
 
         Jy_mesh_dense = np.hstack(jax.lax.scan(loop_body, init=(1, Jy_dense, Jm_dense), xs=None, length=self.Jy.shape[0] - 2)[0][1:])
-        return np.vstack([np.hstack([Jk[:, :self.n_par], Jy_mesh_dense, Jk[:, self.n_par:]]), np.pad(unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jmesh.shape[0] + 1), ((0, 0), (self.n_par, self.Jk.shape[2] - self.n_par)))])
+        return np.vstack([np.hstack([Jk[:, :self.n_par], Jy_mesh_dense, Jk[:, self.n_par:]]), np.pad(unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jmesh.shape[0] + 1, self.colloc_points_unshifted), 
+                          ((0, 0), (self.n_par, self.Jk.shape[2] - self.n_par)))])
 
     @jax.jit
     def left_multiply(self, v):
@@ -503,7 +505,7 @@ class BVPMMJac:
             return (i + 1, out), _
 
         out = jax.lax.scan(loop_body, init=(1, out), xs=None, length=self.Jy.shape[0] - 2)[0][1]
-        out = out.at[:, self.n_par:self.n_par - self.Jk.shape[2]].set(unpermute_q_mesh(out[:, self.n_par:self.n_par - self.Jk.shape[2]], self.n_dim, self.Jmesh.shape[0] + 1))
+        out = out.at[:, self.n_par:self.n_par - self.Jk.shape[2]].set(unpermute_q_mesh(out[:, self.n_par:self.n_par - self.Jk.shape[2]], self.n_dim, self.Jmesh.shape[0] + 1, self.colloc_points_unshifted))
 
         if is_vector:
             out = out.ravel()
@@ -518,7 +520,7 @@ class BVPMMJac:
             v = np.expand_dims(v, 1)
 
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]]
-        vy = permute_q_mesh(vy.T, self.n_dim, self.Jmesh.shape[0] + 1).T
+        vy = permute_q_mesh(vy.T, self.n_dim, self.Jmesh.shape[0] + 1, self.colloc_points_unshifted).T
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]:]])
         out = np.vstack([np.pad(np.vstack(self.Jk)@vk, ((0, self.n_dim), (0, 0))), self.Jmesh@vy])
         
@@ -548,7 +550,7 @@ class BVPMMJac:
     def right_multiply_diag(self, D):
 
         Dy = D[self.n_par:self.n_par - self.Jk.shape[2]]
-        Dy = permute_q_mesh(Dy, self.n_dim, self.Jmesh.shape[0] + 1)
+        Dy = permute_q_mesh(Dy, self.n_dim, self.Jmesh.shape[0] + 1, self.colloc_points_unshifted)
         Dk = np.concatenate([D[:self.n_par], D[self.n_par - self.Jk.shape[2]:]])
 
         Jy = self.Jy.at[0, :, :self.n_dim].multiply(Dy[:self.n_dim])
@@ -644,7 +646,7 @@ class BVPMMJac:
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jmesh, self.Jbc_left, self.Jbc_right)
-        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
+        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par, "colloc_points_unshifted":self.colloc_points_unshifted}
         return (children, aux_data)
 
     @classmethod
@@ -653,7 +655,7 @@ class BVPMMJac:
 
 class BVPMMJac_LQ:
 
-    def __init__(self, Q_c, Q_bc, R_c, R_bc, n_dim, n_par):
+    def __init__(self, Q_c, Q_bc, R_c, R_bc, n_dim, n_par, colloc_points_unshifted=gauss_points):
 
         self.Q_c = Q_c
         self.Q_bc = Q_bc
@@ -661,6 +663,7 @@ class BVPMMJac_LQ:
         self.R_bc = R_bc
         self.n_dim = n_dim
         self.n_par = n_par
+        self.colloc_points_unshifted = colloc_points_unshifted
 
     @jax.jit
     def solve_triangular_L(self, b):
@@ -751,7 +754,7 @@ class BVPMMJac_LQ:
         Q_0 = self.Q_c[-Q_c_index - Q_0_dim**2:-Q_c_index].reshape((Q_0_dim, Q_0_dim))
         v = v.at[:stop].set(Q_0@v[:stop])
 
-        v = unpermute_q_mesh(v.T, self.n_dim, self.R_c.shape[0]).T
+        v = unpermute_q_mesh(v.T, self.n_dim, self.R_c.shape[0], self.colloc_points_unshifted).T
 
         if is_vector:
             v = v.ravel()
@@ -760,7 +763,7 @@ class BVPMMJac_LQ:
 
     def _tree_flatten(self):
         children = (self.Q_c, self.Q_bc, self.R_c, self.R_bc)
-        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
+        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par, "colloc_points_unshifted":self.colloc_points_unshifted}
         return (children, aux_data)
 
     @classmethod
