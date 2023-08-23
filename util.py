@@ -93,7 +93,7 @@ def recompute_mesh(y, mesh_old, gauss_points=gauss_points, n_smooth=4):
 @jax.jit
 def recompute_node_y(y, mesh_old, mesh_new, gauss_points=gauss_points):
 
-    t_eval = fill_mesh(mesh_new)
+    t_eval = fill_mesh(mesh_new, gauss_points)
     y_interp = interpolate(y, mesh_old, t_eval[1:-1], gauss_points)
     return np.hstack([y[:, :1], y_interp, y[:, -1:]])
 
