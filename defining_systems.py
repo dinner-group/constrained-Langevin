@@ -114,10 +114,10 @@ def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), col
     return J
 
 @jax.jit
-def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model):
+def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.gauss_points):
 
     n_mesh_intervals = mesh_points.size + 1
-    n_points = n_mesh_intervals * util.gauss_points.size + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     y = y.reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
     _, mesh_density = util.recompute_mesh(y, mesh_points)
@@ -129,16 +129,16 @@ def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model):
 def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60):
 
     k = q[:ode_model.n_par]
-    n_points = n_mesh_intervals * util.gauss_points.size + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted + 1
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
     period = q[ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
-    mesh_eqs = periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model)
+    mesh_eqs = periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted)
     mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
 
     def loop_body(i, _):
         interval_endpoints = jax.lax.dynamic_slice(mesh_points, (i,), (2,))
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (ode_model.n_dim, util.gauss_points.size + 1))
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
         r_i = periodic_bvp_colloc_resid_interval(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
         return i + 1, r_i
 
