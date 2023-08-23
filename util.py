@@ -4,6 +4,8 @@ import numpy
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
+midpoint = np.array([0])
+lobatto_points_3 = np.array([-1, 0, 1])
 gauss_points = np.array([-np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5)), -np.sqrt(3 / 7 - (2 / 7) * np.sqrt(6 / 5)), np.sqrt(3 / 7 - (2 / 7) * np.sqrt(6 / 5)), np.sqrt(3 / 7 + (2 / 7) * np.sqrt(6 / 5))])
 gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 
@@ -113,15 +115,15 @@ def interpolate(y, mesh_points, t_eval, gauss_points=gauss_points):
     return y_interp.T
 
 @partial(jax.jit, static_argnums=(1, 2))
-def permute_q_mesh(x, n_dim, n_mesh_intervals, gauss_points=gauss_points):
+def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points):
    
     is_vector = len(x.shape) == 1
     if is_vector:
         x = np.expand_dims(x, 0)
 
-    x = np.hstack([x[:, :n_dim], np.concatenate([x[:, n_dim:-n_dim * gauss_points.size - n_mesh_intervals + 1].reshape((x.shape[0], n_dim * gauss_points.size, n_mesh_intervals - 1), order="F"),
-                                                           np.expand_dims(x[:, -n_mesh_intervals + 1:], 1), ], axis=1).reshape((x.shape[0], (n_dim * gauss_points.size + 1) * (n_mesh_intervals - 1)), order="F"), 
-                   x[:, -n_dim * gauss_points.size - n_mesh_intervals + 1:-n_mesh_intervals + 1]])
+    x = np.hstack([x[:, :n_dim], np.concatenate([x[:, n_dim:-n_dim * colloc_points_unshifted.size - n_mesh_intervals + 1].reshape((x.shape[0], n_dim * colloc_points_unshifted.size, n_mesh_intervals - 1), order="F"),
+                                                           np.expand_dims(x[:, -n_mesh_intervals + 1:], 1), ], axis=1).reshape((x.shape[0], (n_dim * colloc_points_unshifted.size + 1) * (n_mesh_intervals - 1)), order="F"), 
+                   x[:, -n_dim * colloc_points_unshifted.size - n_mesh_intervals + 1:-n_mesh_intervals + 1]])
 
     if is_vector:
         x = np.ravel(x)
