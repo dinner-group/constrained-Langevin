@@ -129,7 +129,7 @@ def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifte
 def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60):
 
     k = q[:ode_model.n_par]
-    n_points = n_mesh_intervals * colloc_points_unshifted + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
     period = q[ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
