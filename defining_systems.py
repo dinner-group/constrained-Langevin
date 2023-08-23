@@ -120,7 +120,7 @@ def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifte
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     y = y.reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
-    _, mesh_density = util.recompute_mesh(y, mesh_points)
+    _, mesh_density = util.recompute_mesh(y, mesh_points, colloc_points_unshifted)
     mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
     mesh_mass = mesh_mass_interval.sum()
     return n_mesh_intervals * mesh_mass_interval[:-1] - mesh_mass
