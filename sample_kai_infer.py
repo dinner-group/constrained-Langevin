@@ -20,13 +20,13 @@ parser.add_argument("-iter", type=int, required=True)
 argp = parser.parse_args()
 
 obs_mean = np.load("kai_data.npy")
-n_mesh_intervals = 60
+n_mesh_intervals = 240
 
 @jax.jit
-def kai_bvp_potential_mm(q, ode_model):
+def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points):
     
     #n_mesh_intervals = mesh_points.size - 1
-    n_points = n_mesh_intervals * util.gauss_points.size + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     k = q[:ode_model.n_par]
     y = q[kai.n_par:ode_model.n_par + ode_model.n_dim * n_points].reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = np.pad(q[ode_model.n_par + ode_model.n_dim * n_points:ode_model.n_par + ode_model.n_dim * n_points + n_mesh_intervals - 1], (1, 1), constant_values=(0, 1))
@@ -57,10 +57,10 @@ def kai_bvp_potential_mm(q, ode_model):
     
     return E
 
-@jax.jit
-def kai_dae_log_bvp_potential_mm(q, ode_model, n_mesh_intervals=60):
+@partial(jax.jit, static_argnames=("n_mesh_intervals",))
+def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points, n_mesh_intervals=60):
     
-    n_points = n_mesh_intervals * util.gauss_points.size + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     k = q[:ode_model.n_par]
     y = q[kai.n_par:ode_model.n_par + ode_model.n_dim * n_points].reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = q[ode_model.n_par + ode_model.n_dim * n_points:ode_model.n_par + ode_model.n_dim * n_points + n_mesh_intervals - 1]
@@ -132,8 +132,8 @@ friction = 1e-2
 n_points = n_mesh_intervals * util.gauss_points.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 50000
-thin = 100
+n_steps = 1000
+thin = 10
 
 
 #kai = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
@@ -165,17 +165,29 @@ thin = 100
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
 #                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
+#kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
+#q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
+#p0 = x[q0.size:2 * q0.size] 
+#args = (kai,)
+#potential = kai_dae_log_bvp_potential_mm
+#resid = defining_systems.periodic_bvp_mm_colloc_resid
+#jac = defining_systems.periodic_bvp_mm_colloc_jac
+#n_constraints = resid(q0, *args).size
+#l0 = x[2 * q0.size:2 * q0.size + n_constraints]
+#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+#                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+
 kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
 q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
 p0 = x[q0.size:2 * q0.size] 
-args = (kai,)
-potential = kai_dae_log_bvp_potential_mm
-resid = defining_systems.periodic_bvp_mm_colloc_resid
-jac = defining_systems.periodic_bvp_mm_colloc_jac
+args = (kai, util.midpoint)
+potential = lambda *args:kai_dae_log_bvp_potential_mm(*args, n_mesh_intervals=n_mesh_intervals)
+resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid(*args, n_mesh_intervals=n_mesh_intervals)
+jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
-                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+                                  max_newton_iter=100, tol=1e-10, args=args, metropolize=True, reversibility_tol=1e-6)
 
 
 np.save("kai_lc_%d_%d.npy"%(argp.iter, argp.process), traj_kai_lc)
