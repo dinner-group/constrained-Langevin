@@ -447,7 +447,7 @@ def morris_lecar_mm_bvp_potential(q, ode_model, colloc_points_unshifted=util.gau
 
     E = 0
 
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * colloc_points_unshifted.size + 1)
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
