@@ -113,27 +113,27 @@ def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), col
     J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], ode_model.n_dim, ode_model.n_par)
     return J
 
-@jax.jit
-def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.gauss_points):
+@partial(jax.jit, static_argnames=("n_smooth",))
+def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.gauss_points, n_smooth=4):
 
     n_mesh_intervals = mesh_points.size + 1
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     y = y.reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
-    _, mesh_density = util.recompute_mesh(y, mesh_points, colloc_points_unshifted)
+    _, mesh_density = util.recompute_mesh(y, mesh_points, colloc_points_unshifted, n_smooth)
     mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
     mesh_mass = mesh_mass_interval.sum()
     return n_mesh_intervals * mesh_mass_interval[:-1] - mesh_mass
 
-@partial(jax.jit, static_argnames=("n_mesh_intervals"))
-def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60):
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
+def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60, n_smooth=4):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
     mesh_points = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
     period = q[ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
-    mesh_eqs = periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted)
+    mesh_eqs = periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smooth)
     mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
 
     def loop_body(i, _):
@@ -145,8 +145,8 @@ def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gaus
     colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
 
-@partial(jax.jit, static_argnames=("n_mesh_intervals",))
-def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60):
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
+def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60, n_smooth=4):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -166,8 +166,8 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_
 
         return i + 1, (np.hstack([Jy_i[:, :ode_model.n_dim], Jm_i[:, :1], Jy_i[:, ode_model.n_dim:], Jm_i[:, 1:2]]), np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
 
-    Jmesh_y = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points[1:-1], ode_model, colloc_points_unshifted)
-    Jmesh_m = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points[1:-1], ode_model, colloc_points_unshifted)
+    Jmesh_y = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points[1:-1], ode_model, colloc_points_unshifted, n_smooth)
+    Jmesh_m = jax.jacrev(periodic_bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points[1:-1], ode_model, colloc_points_unshifted, n_smooth)
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
     Jmesh = util.permute_q_mesh(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
 
