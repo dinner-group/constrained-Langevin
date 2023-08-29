@@ -53,23 +53,40 @@ def newton_polynomial(t, node_t, node_y, dd=None):
     return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1)) * dd[np.diag_indices(node_t.size)].T, axis=1)
 
 @partial(jax.jit, static_argnums=1)
-def smooth_mesh_density(mesh_density, n_smooth=4):
+def weighted_average_smoothing(x, n_smooth=4):
     
     def loop_inner(carry, _):
-        i, mesh_density = carry
-        mesh_density = mesh_density.at[i].set(mesh_density[i - 1] / 4 + mesh_density[i] / 2 + mesh_density[i + 1] / 4)
-        return (i + 1, mesh_density), _
+        i, x = carry
+        x = x.at[i].set(x[i - 1] / 4 + x[i] / 2 + x[i + 1] / 4)
+        return (i + 1, x), _
     
     def loop_outer(carry, _):
-        i, mesh_density = carry
-        mesh_density = mesh_density.at[0].set((mesh_density[0] + mesh_density[1]) / 2)
-        mesh_density = jax.lax.scan(loop_inner, init=(1, mesh_density), xs=None, length=mesh_density.size - 2)[0][1]
-        mesh_density = mesh_density.at[-1].set((mesh_density[-1] + mesh_density[-2]) / 2)
-        return (i + 1, mesh_density), _
+        i, x = carry
+        x = x.at[0].set((x[0] + x[1]) / 2)
+        x = jax.lax.scan(loop_inner, init=(1, x), xs=None, length=x.size - 2)[0][1]
+        x = x.at[-1].set((x[-1] + x[-2]) / 2)
+        return (i + 1, x), _
     
-    mesh_density = jax.lax.scan(loop_outer, init=(0, mesh_density), xs=None, length=n_smooth)[0][1]
+    x = jax.lax.scan(loop_outer, init=(0, x), xs=None, length=n_smooth)[0][1]
     
-    return mesh_density
+    return x
+
+@partial(jax.jit, static_argnums=1)
+def weighted_average_periodic_smoothing(x, n_smooth=4):
+    
+    def loop_inner(carry, _):
+        i, x = carry
+        x = x.at[i].set(x[(i - 1) % x.shape[0]] / 4 + x[i] / 2 + x[(i + 1) % x.shape[0]] / 4)
+        return (i + 1, x), _
+    
+    def loop_outer(carry, _):
+        i, x = carry
+        x = jax.lax.scan(loop_inner, init=(0, x), xs=None, length=x.size)[0][1]
+        return (i + 1, x), _
+    
+    x = jax.lax.scan(loop_outer, init=(0, x), xs=None, length=n_smooth)[0][1]
+    
+    return x
 
 @partial(jax.jit, static_argnums=3)
 def recompute_mesh(y, mesh_old, gauss_points=gauss_points, n_smooth=4):
@@ -77,14 +94,14 @@ def recompute_mesh(y, mesh_old, gauss_points=gauss_points, n_smooth=4):
     def loop_body(i, _):
         meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), gauss_points.size + 1)
         yi = jax.lax.dynamic_slice(y, (0, i * gauss_points.size), (y.shape[0], gauss_points.size + 1))
-        return i + 1, gauss_points.size * divided_difference(meshi, yi)[gauss_points.size, gauss_points.size]
+        return i + 1, divided_difference(meshi, yi)[gauss_points.size, gauss_points.size]
     
     _, deriv = jax.lax.scan(loop_body, init=0, xs=None, length=mesh_old.size - 1)
     midpoints = (mesh_old[1:] + mesh_old[:-1]) / 2
     deriv = np.pad((deriv[1:] - deriv[:-1]).T / (midpoints[1:] - midpoints[:-1]), ((0, 0), (1, 1)), mode="edge")
     a = np.maximum(1, np.trapz(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (gauss_points.size + 1))), x=mesh_old)**(1 + 2 * (gauss_points.size + 1)))
     mesh_density = (1 + np.sum(deriv**2, axis=0) / a)**(1 / (1 + 2 * (gauss_points.size + 1)))
-    mesh_density = smooth_mesh_density(mesh_density, n_smooth)
+    mesh_density = weighted_average_smoothing(mesh_density, n_smooth)
     mesh_mass = np.pad(np.cumsum((mesh_density[1:] + mesh_density[:-1]) * (mesh_old[1:] - mesh_old[:-1])) / 2, (1, 0))
     mesh_new = np.interp(np.linspace(0, mesh_mass[-1], mesh_old.size), mesh_mass, mesh_old)
     
