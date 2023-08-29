@@ -463,6 +463,9 @@ def morris_lecar_mm_bvp_potential(q, ode_model, colloc_points_unshifted=util.gau
         E += np.where(k < bounds[:, 0], 100 * (k - bounds[:, 0])**2, 0).sum()
         E += np.where(k > bounds[:, 1], 100 * (k - bounds[:, 1])**2, 0).sum()
 
+    y_smooth = util.weighted_average_periodic_smoothing(y[:, :-1].T)
+    E += 10 * np.sum((y_smooth - y[:, :-1].T)**2)
+
     return E
 
 @partial(jax.jit, static_argnums=(1,))
