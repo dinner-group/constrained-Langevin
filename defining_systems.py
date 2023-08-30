@@ -113,6 +113,71 @@ def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), col
     J = util.BVPJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], ode_model.n_dim, ode_model.n_par)
     return J
 
+@jax.jit
+def periodic_bvp_colloc_resid_interval_hermite3(y, k, period, interval_endpoints, ode_model):
+
+    colloc_points_unshifted = util.midpoint
+    interval_width = interval_endpoints[1] - interval_endpoints[0]
+    colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * interval_width / 2
+    node_points = np.linspace(*interval_endpoints, colloc_points_unshifted.size + 1)
+    ydot = jax.vmap(lambda yy:ode_model.f(0., yy, k))(y.T).T
+    
+    def poly_interval(x):
+
+        interval_width = interval_endpoints[1] - interval_endpoints[0]
+        t = (x - interval_endpoints[0]) / interval_width
+        return (2 * t**3 - 3 * t**2 + 1) * y[:, 0] \
+                + (t**3 - 2 * t**2 + t) * interval_width * ydot[:, 0]\
+                + (-2 * t**3 + 3 * t**2) * y[:, 1]\
+                + (t**3 - t**2) * interval_width * ydot[:, 1]
+
+    poly = jax.vmap(poly_interval)(colloc_points)
+    poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
+    f_interval = jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly)
+    f_interval = np.where(ode_model.not_algebraic, period * f_interval, f_interval)
+    return np.ravel(ode_model.not_algebraic * poly_deriv - f_interval, order="C")
+
+@partial(jax.jit, static_argnames=("n_smooth",))
+def periodic_bvp_mm_mesh_resid_hermite3(y, k, mesh_points, ode_model, n_smooth=4):
+
+    colloc_points_unshifted = util.midpoint
+    n_mesh_intervals = mesh_points.size + 1
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
+    y = y.reshape((ode_model.n_dim, n_points), order="F")
+    mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
+    midpoints = (mesh_points[1:] + mesh_points[:-1]) / 2
+    interval_width = mesh_points[1:] - mesh_points[:-1]
+    ydot = jax.vmap(lambda yy:ode_model.f(0., yy, k))(y.T).T
+    deriv = 2 * y[:, :-1] + interval_width * ydot[:, :-1] - 2 * y[:, 1:] + interval_width * ydot[:, 1:]
+    deriv = np.pad((deriv[:, 1:] - deriv[:, :-1]) / (midpoints[1:] - midpoints[:-1]), ((0, 0), (1, 1)), mode="edge")
+    a = np.maximum(1, np.trapz(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (colloc_points_unshifted.size + 3))), x=mesh_points)**(1 + 2 * (colloc_points_unshifted.size + 3)))
+    mesh_density = (1 + np.sum(deriv**2, axis=0) / a)**(1 / (1 + 2 * (colloc_points_unshifted.size + 3)))
+    mesh_density = util.weighted_average_smoothing(mesh_density, n_smooth)
+    mesh_mass_interval = interval_width * (mesh_density[1:] + mesh_density[:-1]) / 2
+    mesh_mass = mesh_mass_interval.sum()
+    return n_mesh_intervals * mesh_mass_interval[:-1] - mesh_mass
+
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
+def periodic_bvp_mm_colloc_resid_hermite3(q, ode_model, *args, n_mesh_intervals=60, n_smooth=4):
+   
+    colloc_points_unshifted = util.midpoint
+    k = q[:ode_model.n_par]
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
+    y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape((ode_model.n_dim, n_points), order="F")
+    mesh_points = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
+    period = q[ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 1]
+    mesh_eqs = periodic_bvp_mm_mesh_resid_hermite3(y, k, mesh_points, ode_model, n_smooth=4)
+    mesh_points = np.pad(mesh_points, (1, 1), constant_values=(0, 1))
+
+    def loop_body(i, _):
+        interval_endpoints = jax.lax.dynamic_slice(mesh_points, (i,), (2,))
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        r_i = periodic_bvp_colloc_resid_interval_hermite3(y_i, k, period, interval_endpoints, ode_model)
+        return i + 1, r_i
+
+    colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
+    return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
+
 @partial(jax.jit, static_argnames=("n_smooth",))
 def periodic_bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.gauss_points, n_smooth=4):
 
@@ -456,8 +521,8 @@ def morris_lecar_mm_bvp_potential(q, ode_model, colloc_points_unshifted=util.gau
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
 
     if bounds_membrane_voltage is not None:
-        E += (util.smooth_max(y[0]) - bounds_membrane_voltage[1])**2
-        E += (-util.smooth_max(-y[0]) - bounds_membrane_voltage[0])**2
+        E += 100 * (util.smooth_max(y[0]) - bounds_membrane_voltage[1])**2
+        E += 100 * (-util.smooth_max(-y[0]) - bounds_membrane_voltage[0])**2
 
     if bounds is not None:
         E += np.where(k < bounds[:, 0], 100 * (k - bounds[:, 0])**2, 0).sum()
