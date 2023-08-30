@@ -21,6 +21,7 @@ argp = parser.parse_args()
 
 obs_mean = np.load("kai_data.npy")
 n_mesh_intervals = 240
+colloc_points_unshifted = util.midpoint
 
 @jax.jit
 def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points):
@@ -80,15 +81,18 @@ def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gaus
     min_arclength = 0.3
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
-    
+
     std = 1.5e-1
     t = np.linspace(0, 1, obs_mean.size)
-    y_interp = util.interpolate(y, mesh_points, t)
+    y_interp = util.interpolate(y, mesh_points, t, colloc_points_unshifted)
     kaiB = np.exp(y_interp[7:-1]).sum(axis=0)
     kaiB = kaiB - kaiB.mean()
     kaiB = kaiB / np.std(kaiB)
     E += np.trapz((kaiB - obs_mean)**2 / (2 * std**2), x=t)
     
+    y_smooth = util.weighted_average_periodic_smoothing(y[:, :-1].T)
+    E += 10 * np.sum((y_smooth - y[:, :-1].T)**2)
+
     return E
 
 @jax.jit
@@ -117,7 +121,7 @@ def kai_bvp_potential(q, ode_model, mesh_points):
     
     std = 1.5e-1 / np.sqrt(7)
     t = np.linspace(0, 1, obs_mean.size)
-    y_interp = util.interpolate(y, mesh_points, t)
+    y_interp = util.interpolate(y, mesh_points, t, colloc_points_unshifted)
     kaiB = y_interp[7:].sum(axis=0)
     kaiB = kaiB - kaiB.mean()
     kaiB = kaiB / np.std(kaiB)
@@ -129,11 +133,11 @@ dt = 1e-2
 prng_key = np.load("kai_lc_key_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 friction = 1e-2
 
-n_points = n_mesh_intervals * util.gauss_points.size + 1
+n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 1000
-thin = 10
+n_steps = 25000
+thin = 100
 
 
 #kai = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
@@ -187,7 +191,7 @@ jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_int
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
-                                  max_newton_iter=100, tol=1e-10, args=args, metropolize=True, reversibility_tol=1e-6)
+                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 
 np.save("kai_lc_%d_%d.npy"%(argp.iter, argp.process), traj_kai_lc)
