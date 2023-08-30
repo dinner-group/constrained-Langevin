@@ -42,7 +42,7 @@ def fully_extended_hopf_log(q, ode_model, *args):
 @jax.jit
 def periodic_bvp_colloc_resid_interval(y, k, period, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points):
 
-    colloc_points = interval_endpoints[0] + colloc_points_unshifted * (interval_endpoints[1] - interval_endpoints[0])
+    colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * (interval_endpoints[1] - interval_endpoints[0]) / 2
     node_points = np.linspace(*interval_endpoints, colloc_points.size + 1)
     dd = util.divided_difference(node_points, y)
     poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
