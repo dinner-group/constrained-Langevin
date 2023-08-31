@@ -20,13 +20,12 @@ parser.add_argument("-iter", type=int, required=True)
 argp = parser.parse_args()
 
 obs_mean = np.load("kai_data.npy")
-n_mesh_intervals = 240
-colloc_points_unshifted = util.midpoint
+n_mesh_intervals = 60
+colloc_points_unshifted = util.gauss_points
 
-@jax.jit
-def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points):
+@partial(jax.jit, static_argnames=("n_mesh_intervals",))
+def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points, n_mesh_intervals=60):
     
-    #n_mesh_intervals = mesh_points.size - 1
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     k = q[:ode_model.n_par]
     y = q[kai.n_par:ode_model.n_par + ode_model.n_dim * n_points].reshape((ode_model.n_dim, n_points), order="F")
@@ -85,7 +84,7 @@ def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gaus
     std = 1.5e-1
     t = np.linspace(0, 1, obs_mean.size)
     y_interp = util.interpolate(y, mesh_points, t, colloc_points_unshifted)
-    kaiB = np.exp(y_interp[7:-1]).sum(axis=0)
+    kaiB = np.exp(y_interp[8:-1]).sum(axis=0)
     kaiB = kaiB - kaiB.mean()
     kaiB = kaiB / np.std(kaiB)
     E += np.trapz((kaiB - obs_mean)**2 / (2 * std**2), x=t)
@@ -129,14 +128,14 @@ def kai_bvp_potential(q, ode_model, mesh_points):
     
     return E
 
-dt = 1e-2
+dt = 1e-6
 prng_key = np.load("kai_lc_key_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 friction = 1e-2
 
 n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 25000
+n_steps = 1000
 thin = 100
 
 
@@ -157,13 +156,25 @@ thin = 100
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_rattle_symm_broyden, 
 #                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
-#kai = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
+kai = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
+q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
+p0 = x[q0.size:2 * q0.size] 
+args = (kai, colloc_points_unshifted)
+potential = lambda *args:kai_bvp_potential_mm(*args, n_mesh_intervals=n_mesh_intervals)
+resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid(*args, n_mesh_intervals=n_mesh_intervals)
+jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
+n_constraints = resid(q0, *args).size
+l0 = x[2 * q0.size:2 * q0.size + n_constraints]
+traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+
+#kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
 #q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
 #p0 = x[q0.size:2 * q0.size] 
-#args = (kai,)
-#potential = kai_bvp_potential_mm
-#resid = defining_systems.periodic_bvp_mm_colloc_resid
-#jac = defining_systems.periodic_bvp_mm_colloc_jac
+#args = (kai, util.gauss_points)
+#potential = kai_dae_log_bvp_potential_mm
+#resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid(*args, n_mesh_intervals=n_mesh_intervals)
+#jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
@@ -172,26 +183,14 @@ thin = 100
 #kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
 #q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
 #p0 = x[q0.size:2 * q0.size] 
-#args = (kai,)
-#potential = kai_dae_log_bvp_potential_mm
-#resid = defining_systems.periodic_bvp_mm_colloc_resid
-#jac = defining_systems.periodic_bvp_mm_colloc_jac
+#args = (kai, util.midpoint)
+#potential = lambda *args:kai_dae_log_bvp_potential_mm(*args, n_mesh_intervals=n_mesh_intervals)
+#resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid(*args, n_mesh_intervals=n_mesh_intervals)
+#jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
 #                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
-
-kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
-q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
-p0 = x[q0.size:2 * q0.size] 
-args = (kai, util.midpoint)
-potential = lambda *args:kai_dae_log_bvp_potential_mm(*args, n_mesh_intervals=n_mesh_intervals)
-resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid(*args, n_mesh_intervals=n_mesh_intervals)
-jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
-n_constraints = resid(q0, *args).size
-l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
-                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 
 np.save("kai_lc_%d_%d.npy"%(argp.iter, argp.process), traj_kai_lc)
