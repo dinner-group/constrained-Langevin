@@ -736,7 +736,7 @@ class KaiABC_DAE_log_nondim:
             return i + 1, self.S[i]@np.exp(par + y@self.K.at[i].add(-1))
 
         ydot = jax.lax.scan(loop_body, init=1, xs=None, length=self.n_dim - self.conservation_law.shape[0])[1]
-        ydot = np.pad(ydot, (1, 1), constant_values=(self.conservation_law[0]@np.exp(y) - 1, self.conservation_law[1]@np.exp(y) - self.a0))
+        ydot = np.pad(ydot, (1, 1), constant_values=(self.conservation_law[0]@np.exp(y) - 1, self.conservation_law[1]@np.exp(y) - a0))
 
         return ydot
 
