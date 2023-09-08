@@ -240,6 +240,42 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_
 
     return J
 
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
+def periodic_bvp_mm_colloc_resid_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4):
+
+    if colloc_points_unshifted is None:
+        colloc_points_unshifted = (util.gauss_points for _ in ode_models)
+
+    if n_mesh_intervals is None:
+        n_mesh_intervals = (60 for _ in ode_models)
+
+    y_indices = [0 for _ in range(len(ode_models) + 1)]
+    y_indices[0] = ode_models[0].n_par
+
+    for i in range(len(ode_models)):
+        y_indices[i + 1] = y_indices[i] + ode_models[i].n_dim * (n_mesh_intervals[i] * colloc_points_unshifted[i].size + 1) + n_mesh_intervals[i]
+
+    return np.concatenate([periodic_bvp_mm_colloc_resid(np.concatenate([q[:ode_models[0].n_par], q[y_indices[i]:y_indices[i + 1]]]), ode_models[i], colloc_points_unshifted[i], *args, 
+                           n_mesh_intervals=n_mesh_intervals[i], n_smooth=n_smooth) for i in range(len(ode_models))])
+
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
+def periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4):
+
+    if colloc_points_unshifted is None:
+        colloc_points_unshifted = (util.gauss_points for _ in ode_models)
+
+    if n_mesh_intervals is None:
+        n_mesh_intervals = (60 for _ in ode_models)
+
+    y_indices = [0 for _ in range(len(ode_models) + 1)]
+    y_indices[0] = ode_models[0].n_par
+
+    for i in range(len(ode_models)):
+        y_indices[i + 1] = y_indices[i] + ode_models[i].n_dim * (n_mesh_intervals[i] * colloc_points_unshifted[i].size + 1) + n_mesh_intervals[i]
+
+    return tuple(periodic_bvp_mm_colloc_jac(np.concatenate([q[:ode_models[0].n_par], q[y_indices[i]:y_indices[i + 1]]]), ode_models[i], colloc_points_unshifted[i], *args, n_mesh_intervals=n_mesh_intervals[i], n_smooth=n_smooth) 
+            for i in range(len(ode_models)))
+
 @jax.jit
 def quadratic_roots_potential(position):
     E = 0
