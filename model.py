@@ -978,7 +978,7 @@ class Morris_Lecar_nondim:
     n_par = 16
     not_algebraic = 1
     
-    def __init__(self, par, **kwargs, par_scale=None):
+    def __init__(self, par, par_scale=None, **kwargs):
         self.par = par
         if par_scale is None:
             self.par_scale = np.ones_like(par)
