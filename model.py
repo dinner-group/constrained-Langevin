@@ -978,8 +978,12 @@ class Morris_Lecar_nondim:
     n_par = 16
     not_algebraic = 1
     
-    def __init__(self, par, **kwargs):
+    def __init__(self, par, **kwargs, par_scale=None):
         self.par = par
+        if par_scale is None:
+            self.par_scale = np.ones_like(par)
+        else:
+            self.par_scale = par_scale
 
     @jax.jit
     def f(self, t, y, par=None):
@@ -987,6 +991,7 @@ class Morris_Lecar_nondim:
         if par is None:
             par = self.par
 
+        par = par * self.par_scale
         dy = np.zeros_like(y)
         dy = dy.at[0].set(par[0] - par[1] * (y[0] - par[2]) - par[3] * y[1] * (y[0] - 1) - par[4] * y[2] * (y[0] - par[5]) - par[6] / np.cosh((y[0] - par[7]) / par[8])**2 * (y[0] - par[5]))
         dy = dy.at[1].set(((1 + np.tanh((y[0] - par[9]) / par[10])) / 2 - y[1]) * np.cosh((y[0] - par[9]) / par[11]))
@@ -1003,7 +1008,7 @@ class Morris_Lecar_nondim:
         return np.zeros(0)
 
     def _tree_flatten(self):
-        children = (self.par,)
+        children = (self.par, self.par_scale)
         aux_data = {}
         return (children, aux_data)
 
