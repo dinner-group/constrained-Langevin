@@ -121,9 +121,71 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
     return b - out[0], out[1], J_and_factor
 
 @jax.jit
+def factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ):
+
+    row_indices = [0 for _ in range(len(J) + 1)]
+
+    for i in range(len(J)):
+        row_indices[i + 1] = row_indices[i] + J[i].shape[0]
+
+    col_indices_k = [0 for _ in range(len(J) + 1)]
+    col_indices_k[0] = J[0].n_par
+
+    for i in range(len(J)):
+        col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
+
+    Jk = np.vstack(np.pad(np.vstack(J[i].Jk[:, :, :J[i].n_par]), ((0, J[i].shape[0] - J[i].Jk.shape[0] * J[i].Jk.shape[1]), (0, 0))) for i in range(len(J)))
+    Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[2] - J_i.n_par for J_i in J]))))
+
+    for i in range(len(J)):
+        Jk_i = np.vstack(J[i].Jk[:, :, J[i].Jk.shape[2] - J[i].shape[0]:])
+        Jk = Jk.at[row_indices[i]:row_indices[i] + Jk_i.shape[0], col_indices_k[i]:col_indices_k[i + 1]].set(Jk_i[:, J[0].n_par:])
+
+    E = np.vstack([J_LQ[i].solve_triangular_L(Jk[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
+    Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+
+    return E, Q_k, R_k
+
+@jax.jit
+def lstsq_bvpjac_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
+
+    if J_LQ is None:
+        J_LQ = tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv)
+    if Jk_factor is None:
+        Jk_factor = factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ)
+
+    E, Q_k, R_k = Jk_factor
+
+    row_indices = [0 for _ in range(len(J) + 1)]
+
+    for i in range(len(J)):
+        row_indices[i + 1] = row_indices[i] + J[i].shape[0]
+
+    col_indices_k = [0 for _ in range(len(J) + 1)]
+    col_indices_k[0] = J[0].n_par
+
+    for i in range(len(J)):
+        col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
+
+    w = np.concatenate([J_LQ[i].solve_triangular_L(b[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
+    out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w)
+    u = w - E@out_k
+    out_y = [J_LQ[i].Q_right_multiply(u[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))]
+    out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
+
+    if sqrtMinv is not None:
+        if len(sqrtMinv.shape) == 1:
+            out = out / sqrtMinv
+        else:
+            out = jax.scipy.linalg.solve_triangular(sqrtMinv, out, lower=False)
+
+    return out, u
+
+@jax.jit
 def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=None):
 
     if inverse_mass is None:
+        sqrtMinv = None
         JsqrtMinv = J
     elif len(inverse_mass.shape) == 1:
         sqrtMinv = np.sqrt(inverse_mass)
@@ -147,38 +209,7 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
         J_and_factor = (J, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))
 
     J_LQ = J_and_factor[1]
-    row_indices = [0 for _ in range(len(J) + 1)]
-
-    for i in range(len(J)):
-        row_indices[i + 1] = row_indices[i] + J[i].shape[0]
-
-    col_indices_k = [0 for _ in range(len(J) + 1)]
-    col_indices_k[0] = J[0].n_par
-
-    for i in range(len(J)):
-        col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
-
-    Jk = np.vstack(np.pad(np.vstack(JsqrtMinv[i].Jk[:, :, :JsqrtMinv[i].n_par]), ((0, JsqrtMinv[i].shape[0] - JsqrtMinv[i].Jk.shape[0] * JsqrtMinv[i].Jk.shape[1]), (0, 0))) for i in range(len(J)))
-    Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[2] - J_i.n_par for J_i in J]))))
-
-    for i in range(len(J)):
-        Jk_i = np.vstack(JsqrtMinv[i].Jk[:, :, JsqrtMinv[i].Jk.shape[2] - JsqrtMinv[i].shape[0]:])
-        Jk = Jk.at[row_indices[i]:row_indices[i] + Jk_i.shape[0], col_indices_k[i]:col_indices_k[i + 1]].set(Jk_i[:, J[0].n_par:])
-
-    E = np.vstack([J_LQ[i].solve_triangular_L(Jk[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
-    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
-
-    def lstsq(b):
-        w = np.concatenate([J_LQ[i].solve_triangular_L(b[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
-        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[-w.size:].T@w)
-        u = w - E@out_k
-        out_y = [J_LQ[i].Q_right_multiply(u[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))]
-        out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
-
-        if inverse_mass is not None:
-            out = out / sqrtMinv
-
-        return out, u
+    Jk_factor = factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ)
 
     row_indices_b = [0 for _ in range(len(J) + 1)]
     row_indices_b[0] = J[0].n_par
@@ -190,7 +221,7 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
         b = sqrtMinv * b
 
     JMinvb = np.concatenate([JsqrtMinv[i].right_multiply(np.concatenate([b[:J[0].n_par], b[row_indices_b[i]:row_indices_b[i + 1]]])) for i in range(len(J))])
-    out = lstsq(JMinvb)
+    out = lstsq_bvpjac_multi_eqn_shared_k(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     return b - out[0], out[1], J_and_factor 
 
 class LinSolColloc():
