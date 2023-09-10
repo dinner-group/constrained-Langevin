@@ -420,7 +420,7 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
         out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
 
         if inverse_mass is not None:
-            out = out * sqrtMinv
+            out = sqrtMinv * out
 
         return out
 
