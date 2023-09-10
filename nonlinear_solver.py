@@ -340,66 +340,36 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
 def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, args=(), **kwargs):
     
     if inverse_mass is None:
-        JsqrtMinv = J
+        sqrtMinv = None
+        JsqrtMinv = jac_prev
     elif len(inverse_mass.shape) == 1:
         sqrtMinv = np.sqrt(inverse_mass)
-        JsqrtMinv = list(J)
-        JsqrtMinv[0] = J[0].right_multiply_diag(sqrtMinv[:J[0].shape[1]])
-        for i in range(1, len(J)):
-            JsqrtMinv[i] = J[i].right_multiply_diag(JsqrtMinv[J[i - 1].shape[1]:J[i].shape[1]])
+        JsqrtMinv = list(jac_prev)
+        JsqrtMinv[0] = jac_prev[0].right_multiply_diag(sqrtMinv[:jac_prev[0].shape[1]])
+        for i in range(1, len(jac_prev)):
+            JsqrtMinv[i] = jac_prev[i].right_multiply_diag(JsqrtMinv[jac_prev[i - 1].shape[1]:jac_prev[i].shape[1]])
         JsqrtMinv = tuple(JsqrtMinv)
     else:
-        dense_shape = (sum(J_i.shape[0] for J_i in J), sum(J_i.shape[1] for J_i in J) - sum(J_i.n_par for J_i in J[1:]))
+        dense_shape = (sum(J_i.shape[0] for J_i in jac_prev), sum(J_i.shape[1] for J_i in jac_prev) - sum(J_i.n_par for J_i in jac_prev[1:]))
         J_dense = np.zeros(dense_shape)
-        J_dense = J_dense.at[:J[0].shape[0], :J[0].shape[1]].set(J[0].todense())
-        ind_start = (0, J[0].n_par)
-        for i in range(1, len(J)):
-            ind_stop = (ind[0] + J[i - 1].shape[0], ind[1] + J[i - 1].shape[1] - J[i - 1].n_par)
-            J_dense = J_dense.at[ind_start[0]:ind_stop[0], ind_start[1]:ind_stop[1]].set(J[i].todense()[:, J[i].n_par:])
+        J_dense = J_dense.at[:jac_prev[0].shape[0], :jac_prev[0].shape[1]].set(jac_prev[0].todense())
+        ind_start = (0, jac_prev[0].n_par)
+        for i in range(1, len(jac_prev)):
+            ind_stop = (ind[0] + jac_prev[i - 1].shape[0], ind[1] + jac_prev[i - 1].shape[1] - jac_prev[i - 1].n_par)
+            J_dense = J_dense.at[ind_start[0]:ind_stop[0], ind_start[1]:ind_stop[1]].set(jac_prev[i].todense()[:, jac_prev[i].n_par:])
             ind_start = ind_stop
 
         return quasi_newton_rattle_symm_broyden(x, resid, J_dense, None, inverse_mass, max_iter, None, args, **kwargs)
 
     if J_and_factor is None:
-        J_and_factor = (J, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))
+        J_and_factor = (jac_prev, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))
 
     J_LQ = J_and_factor[1]
-    row_indices = [0 for _ in range(len(J) + 1)]
+    Jk_factor = linear_solver.factor_bvpjac_k_multi_eqn_shared_k(jac_prev, J_LQ)
 
-    for i in range(len(J)):
-        row_indices[i + 1] = row_indices[i] + J[i].shape[0]
-
-    col_indices_k = [0 for _ in range(len(J) + 1)]
-    col_indices_k[0] = J[0].n_par
-
-    for i in range(len(J)):
-        col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
-
-    Jk = np.vstack(np.pad(np.vstack(JsqrtMinv[i].Jk[:, :, :JsqrtMinv[i].n_par]), ((0, JsqrtMinv[i].shape[0] - JsqrtMinv[i].Jk.shape[0] * JsqrtMinv[i].Jk.shape[1]), (0, 0))) for i in range(len(J)))
-    Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[2] - J_i.n_par for J_i in J]))))
-
-    for i in range(len(J)):
-        Jk_i = np.vstack(JsqrtMinv[i].Jk[:, :, JsqrtMinv[i].Jk.shape[2] - JsqrtMinv[i].shape[0]:])
-        Jk = Jk.at[row_indices[i]:row_indices[i] + Jk_i.shape[0], col_indices_k[i]:col_indices_k[i + 1]].set(Jk_i[:, J[0].n_par:])
-
-    E = np.vstack([J_LQ[i].solve_triangular_L(Jk[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
-    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
-
-    def lstsq(b):
-        w = np.concatenate([J_LQ[i].solve_triangular_L(b[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
-        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[-w.size:].T@w)
-        u = w - E@out_k
-        out_y = [J_LQ[i].Q_right_multiply(u[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))]
-        out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
-
-        if inverse_mass is not None:
-            out = out / sqrtMinv
-
-        return out
-
-    dx = lstsq(-resid(x, *args))
+    dx, _ = linear_solver.lstsq_bvpjac_multi_eqn_shared_k(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
     x = x + dx
-    v = lstsq(-resid(x, *args))
+    v, _ = linear_solver.lstsq_bvpjac_multi_eqn_shared_k(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -412,7 +382,7 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v = lstsq(-resid(x, *args))
+        v, _ = linear_solver.lstsq_bvpjac_multi_eqn_shared_k(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
