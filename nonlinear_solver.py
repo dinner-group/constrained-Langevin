@@ -87,9 +87,9 @@ def quasi_newton_rattle_symm_1(x, resid, jac_prev, jac=None, inverse_mass=None, 
 
         if inverse_mass is not None:
             if len(inverse_mass.shape) == 1:
-                dx = sqrtMinv * dx
+                dx = dx / sqrtMinv
             else:
-                dx = sqrtMinv@dx
+                dx = jax.scipy.linalg.solve_triangular(sqrtMinv, dx, lower=False)
 
         return x + dx, step + 1, dx
 
@@ -161,9 +161,9 @@ def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=
         x = Q@jax.scipy.linalg.solve_triangular(R.T, b, lower=True)
         if inverse_mass is not None:
             if len(inverse_mass.shape) == 1:
-                x = sqrtMinv * dx
+                x = x / sqrtMinv
             else:
-                x = sqrtMinv@dx
+                x = jax.scipy.linalg.solve_triangular(sqrtMinv, dx, lower=False)
         return x
 
     dx = lstsq(-resid(x, *args))
@@ -393,7 +393,7 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
         out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
 
         if inverse_mass is not None:
-            out = sqrtMinv * out
+            out = out / sqrtMinv
 
         return out
 
@@ -457,9 +457,9 @@ def quasi_newton_bvp_symm_broyden_resid(x, resid, jac_prev, jac, inverse_mass=No
 
         if inverse_mass is not None:
             if len(inverse_mass.shape) == 1:
-                out = sqrtMinv * out
+                out = out / sqrtMinv
             else:
-                out = sqrtMinv@out
+                out = jax.scipy.linalg.solve_triangular(sqrtMinv, out, lower=False)
 
         return out
 

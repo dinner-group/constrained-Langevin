@@ -89,9 +89,9 @@ def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
     if sqrtMinv is not None:
         if len(sqrtMinv.shape) == 1:
-            out = sqrtMinv * out
+            out = out / sqrtMinv
         else:
-            out = sqrtMinv@out
+            out = jax.scipy.linalg.solve_triangular(sqrtMinv, out, lower=False)
 
     return out, u
 
@@ -176,7 +176,7 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
         out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
 
         if inverse_mass is not None:
-            out = sqrtMinv * out
+            out = out / sqrtMinv
 
         return out, u
 
