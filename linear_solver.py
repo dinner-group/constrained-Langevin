@@ -65,26 +65,27 @@ def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
     return b - J.left_multiply(b_proj_coeff), b_proj_coeff, J_and_factor
 
 @jax.jit
-def factor_bvpjac(J):
+def factor_bvpjac_k(J, J_LQ):
 
-    J_LQ = J.lq_factor()
     Jk = np.pad(np.vstack(J.Jk), ((0, J.shape[0] - J.Jk.shape[0]), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
-    return J_LQ, E, Q_k, R_k
+    return E, Q_k, R_k
 
 @jax.jit
-def lstsq_bvpjac(J, b, J_factor=None, sqrtMinv=None):
+def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
+    if J_LQ is None:
+        J_LQ = J.lq_factor()
     if Jk_factor is None:
-        J_factor = factor_bvpjac(J)
+        Jk_factor = factor_bvpjac(J, J_LQ)
 
-    J_LQ, E, Q_k, R_k = Jk_factor
+    E, Q_k, R_k = Jk_factor
     w = J_LQ.solve_triangular_L(b)
     out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w, lower=False)
     u = w - E@out_k
     out_y = J_LQ.Q_right_multiply(u)
-    out = np.concatenate([out_k[:J.n_par], out_y, out_k[-Jk.shape[2] + Jk.n_par:]])
+    out = np.concatenate([out_k[:J.n_par], out_y, out_k[-J.Jk.shape[2] + J.n_par:]])
 
     if sqrtMinv is not None:
         if len(sqrtMinv.shape) == 1:
@@ -97,6 +98,7 @@ def lstsq_bvpjac(J, b, J_factor=None, sqrtMinv=None):
 @jax.jit
 def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
 
+    sqrtMinv = None
     if inverse_mass is None:
         JsqrtMinv = J
     elif len(inverse_mass.shape) == 1:
@@ -109,27 +111,13 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
         J_and_factor = (J, JsqrtMinv.lq_factor())
 
     J_LQ = J_and_factor[1]
-    Jk = np.pad(np.vstack(JsqrtMinv.Jk), ((0, JsqrtMinv.shape[0] - JsqrtMinv.Jk.shape[0]), (0, 0)))
-    E = J_LQ.solve_triangular_L(Jk)
-    Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+    E, Q_k, R_k = factor_bvpjac_k(J, J_LQ)
 
-    def lstsq(b):
-        w = J_LQ.solve_triangular_L(b)
-        out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[Jk.shape[1]:].T@w, lower=False)
-        u = w - E@out_k
-        out_y = J_LQ.Q_right_multiply(u)
-        out = np.concatenate([out_k[:JsqrtMinv.n_par], out_y, out_k[-1:]])
-
-        if inverse_mass is not None:
-            out = sqrtMinv * out
-
-        return out, u
-    
     if inverse_mass is not None:
         b = sqrtMinv * b
 
     JMinvb = JsqrtMinv.right_multiply(b)
-    out = lstsq(JMinvb)
+    out = lstsq_bvpjac(J, JMinvb, J_LQ, (E, Q_k, R_k), sqrtMinv)
     return b - out[0], out[1], J_and_factor
 
 @jax.jit
