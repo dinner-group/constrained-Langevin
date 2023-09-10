@@ -19,7 +19,9 @@ parser.add_argument("-process", type=int, required=True)
 parser.add_argument("-iter", type=int, required=True)
 argp = parser.parse_args()
 
-obs_mean = np.load("kai_data.npy")
+#obs_mean = np.load("kai_data.npy")
+obs_kai_ab = np.load("kai_ab_data.npy")
+obs_kai_phos = np.load("kai_phos_data.npy")
 n_mesh_intervals = 60
 colloc_points_unshifted = util.gauss_points
 
@@ -47,14 +49,27 @@ def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
     
-    std = 1.5e-1 / np.sqrt(7)
-    t = np.linspace(0, 1, obs_mean.size)
-    y_interp = util.interpolate(y, mesh_points, t)
-    kaiB = y_interp[7:].sum(axis=0)
-    kaiB = kaiB - kaiB.mean()
-    kaiB = kaiB / np.std(kaiB)
-    E += np.trapz((kaiB - obs_mean)**2 / (2 * std**2), x=t)
+    t = np.linspace(0, 1, obs_kai_ab.shape[0])
+    y_interp = util.interpolate(y, mesh_points, t, colloc_points_unshifted)
+
+    std = 2 / 9 / np.sqrt(5)
+    B_bound = y_interp[7:].sum(axis=0)
+    B_bound = B_bound - B_bound.mean()
+    B_bound = B_bound / np.std(B_bound)
+    E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t)
     
+    std = 2 / 3 / np.sqrt(5)
+    A_bound = ode_model.conservation_law[1, 1:-1]@y_interp
+    A_bound = A_bound - A_bound.mean()
+    A_bound = A_bound / np.std(A_bound)
+    E += np.trapz((A_bound - obs_kai_ab[:, 0])**2 / (2 * std**2), x=t)
+
+    t = np.linspace(0, 1, obs_kai_phos.shape[0])
+    y_interp = util.interpolate(y, mesh_points, t, colloc_points_unshifted)
+
+    phos = y_interp[1:].sum(axis=0)
+    E += np.trapz(100 * (phos - obs_kai_phos) ** 2 / 2, x=t)
+
     return E
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals",))
@@ -128,14 +143,14 @@ def kai_bvp_potential(q, ode_model, mesh_points):
     
     return E
 
-dt = 1e-6
+dt = 1e-2
 prng_key = np.load("kai_lc_key_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 friction = 1e-2
 
 n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 1000
+n_steps = 100000
 thin = 100
 
 
