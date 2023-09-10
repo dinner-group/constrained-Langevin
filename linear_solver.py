@@ -65,6 +65,36 @@ def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
     return b - J.left_multiply(b_proj_coeff), b_proj_coeff, J_and_factor
 
 @jax.jit
+def factor_bvpjac(J):
+
+    J_LQ = J.lq_factor()
+    Jk = np.pad(np.vstack(J.Jk), ((0, J.shape[0] - J.Jk.shape[0]), (0, 0)))
+    E = J_LQ.solve_triangular_L(Jk)
+    Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+    return J_LQ, E, Q_k, R_k
+
+@jax.jit
+def lstsq_bvpjac(J, b, J_factor=None, sqrtMinv=None):
+
+    if Jk_factor is None:
+        J_factor = factor_bvpjac(J)
+
+    J_LQ, E, Q_k, R_k = Jk_factor
+    w = J_LQ.solve_triangular_L(b)
+    out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w, lower=False)
+    u = w - E@out_k
+    out_y = J_LQ.Q_right_multiply(u)
+    out = np.concatenate([out_k[:J.n_par], out_y, out_k[-Jk.shape[2] + Jk.n_par:]])
+
+    if sqrtMinv is not None:
+        if len(sqrtMinv.shape) == 1:
+            out = sqrtMinv * out
+        else:
+            out = sqrtMinv@out
+
+    return out, u
+
+@jax.jit
 def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
 
     if inverse_mass is None:
@@ -81,17 +111,17 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
     J_LQ = J_and_factor[1]
     Jk = np.pad(np.vstack(JsqrtMinv.Jk), ((0, JsqrtMinv.shape[0] - JsqrtMinv.Jk.shape[0]), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
-    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+    Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
 
     def lstsq(b):
         w = J_LQ.solve_triangular_L(b)
-        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
+        out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[Jk.shape[1]:].T@w, lower=False)
         u = w - E@out_k
         out_y = J_LQ.Q_right_multiply(u)
         out = np.concatenate([out_k[:JsqrtMinv.n_par], out_y, out_k[-1:]])
 
         if inverse_mass is not None:
-            out = out / sqrtMinv
+            out = sqrtMinv * out
 
         return out, u
     
@@ -158,7 +188,7 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
         out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
 
         if inverse_mass is not None:
-            out = out / sqrtMinv
+            out = sqrtMinv * out
 
         return out, u
 
