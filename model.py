@@ -1152,7 +1152,7 @@ jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Bruss
 jax.tree_util.register_pytree_node(Brusselator_log, Brusselator_log._tree_flatten, Brusselator_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar, Morris_Lecar._tree_flatten, Morris_Lecar._tree_unflatten)
 jax.tree_util.register_pytree_node(Morris_Lecar_nondim, Morris_Lecar_nondim._tree_flatten, Morris_Lecar_nondim._tree_unflatten)
-jax.tree_util.register_pytree_node(Morris_Lecar_log_nondim, Morris_Lecar_nondim._tree_flatten, Morris_Lecar_nondim._tree_unflatten)
+jax.tree_util.register_pytree_node(Morris_Lecar_log_nondim, Morris_Lecar_log_nondim._tree_flatten, Morris_Lecar_log_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log, Repressilator_log._tree_flatten, Repressilator_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log_n, Repressilator_log_n._tree_flatten, Repressilator_log_n._tree_unflatten)
