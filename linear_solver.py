@@ -128,6 +128,7 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
     if J_and_factor is None:
         J_and_factor = (J, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))
 
+    J_LQ = J_and_factor[1]
     row_indices = [0 for _ in range(len(J) + 1)]
 
     for i in range(len(J)):
@@ -139,7 +140,6 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
     for i in range(len(J)):
         col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
 
-    J_LQ = J_and_factor[1]
     Jk = np.vstack(np.pad(np.vstack(JsqrtMinv[i].Jk[:, :, :JsqrtMinv[i].n_par]), ((0, JsqrtMinv[i].shape[0] - JsqrtMinv[i].Jk.shape[0] * JsqrtMinv[i].Jk.shape[1]), (0, 0))) for i in range(len(J)))
     Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[2] - J_i.n_par for J_i in J]))))
 
