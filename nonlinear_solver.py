@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as np
 import util
+import linear_solver
 from functools import partial
 jax.config.update("jax_enable_x64", True)
 
@@ -307,6 +308,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
 def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, args=(), **kwargs):
     
+    sqrtMinv = None
     if inverse_mass is None:
         jac_prev_sqrtM = jac_prev
     elif len(inverse_mass.shape) == 1:
@@ -322,25 +324,11 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     else:
         J_LQ = J_and_factor[1]
 
-    Jk = np.pad(np.vstack(jac_prev_sqrtM.Jk), ((0, jac_prev_sqrtM.shape[0] - jac_prev_sqrtM.Jk.shape[0]), (0, 0)))
-    E = J_LQ.solve_triangular_L(Jk)
-    Q1, R1 = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
+    Jk_factor = linear_solver.factor_bvpjac_k(jac_prev, J_LQ)
 
-    def lstsq(b):
-        w = J_LQ.solve_triangular_L(b)
-        out_k = jax.scipy.linalg.solve_triangular(R1, Q1[Jk.shape[1]:].T@w, lower=False)
-        u = w - E@out_k
-        out_y = J_LQ.Q_right_multiply(u)
-        out = np.concatenate([out_k[:jac_prev_sqrtM.n_par], out_y, out_k[-1:]])
-
-        if inverse_mass is not None:
-            out = sqrtMinv * out
-
-        return out
-
-    dx = lstsq(-resid(x, *args))
+    dx, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
     x = x + dx
-    v = lstsq(-resid(x, *args))
+    v, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -353,7 +341,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v = lstsq(-resid(x, *args))
+        v, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
@@ -389,6 +377,9 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
             ind_start = ind_stop
 
         return quasi_newton_rattle_symm_broyden(x, resid, J_dense, None, inverse_mass, max_iter, None, args, **kwargs)
+
+    if J_and_factor is None:
+        J_and_factor = (J, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))
 
     J_LQ = J_and_factor[1]
     row_indices = [0 for _ in range(len(J) + 1)]

@@ -98,8 +98,8 @@ def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 @jax.jit
 def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
 
-    sqrtMinv = None
     if inverse_mass is None:
+        sqrtMinv = None
         JsqrtMinv = J
     elif len(inverse_mass.shape) == 1:
         sqrtMinv = np.sqrt(inverse_mass)
@@ -111,13 +111,13 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
         J_and_factor = (J, JsqrtMinv.lq_factor())
 
     J_LQ = J_and_factor[1]
-    E, Q_k, R_k = factor_bvpjac_k(J, J_LQ)
+    Jk_factor = factor_bvpjac_k(J, J_LQ)
 
     if inverse_mass is not None:
         b = sqrtMinv * b
 
     JMinvb = JsqrtMinv.right_multiply(b)
-    out = lstsq_bvpjac(J, JMinvb, J_LQ, (E, Q_k, R_k), sqrtMinv)
+    out = lstsq_bvpjac(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     return b - out[0], out[1], J_and_factor
 
 @jax.jit
