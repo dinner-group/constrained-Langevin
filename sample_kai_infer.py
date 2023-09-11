@@ -72,6 +72,87 @@ def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points
 
     return E
 
+def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gauss_points, util.gauss_points), n_mesh_intervals=(60, 60)):
+   
+    k = q[:ode_models[0].n_par]
+    start = ode_models[0].n_par
+    for i in range(len(ode_models)):
+
+        n_points = n_mesh_intervals[i] * colloc_points_unshifted[i].size + 1
+        stop = start + ode_models[i].n_dim * n_points
+        y = q[start:stop].reshape((ode_models[i].n_dim, n_points), order="F")
+        start = stop
+        stop = start + n_mesh_intervals[i] - 1
+        mesh_points = np.pad(q[start:stop], (1, 1), constant_values=(0, 1))
+        start = stop + 1
+        E = np.where(np.abs(k) > 7, 100 * (np.abs(k) - 7)**2 / 2, 0).sum()
+        yfull = np.vstack([1 - ode_models[i].conservation_law[0, 1:-1]@y, y, ode_models[i].a0 - ode_models[i].conservation_law[1, 1:-1]@y])
+        y_mean = yfull.mean(axis=1)
+        
+        pU_logsum = np.log(y_mean[:2].sum())
+        E += np.where(pU_logsum < -2, 10 * (pU_logsum + 2)**2 / 2, 0)
+        pT_logsum = np.log(y_mean[2:4].sum())
+        E += np.where(pT_logsum < -2, 10 * (pT_logsum + 2)**2 / 2, 0)
+        pD_logsum = np.log(y_mean[np.array([4, 5, 8, 9, 12, 13])].sum())
+        E += np.where(pD_logsum < -2, 10 * (pD_logsum + 2)**2 / 2, 0)
+        pS_logsum = np.log(y_mean[np.array([6, 7, 10, 11, 14, 15])].sum())
+        E += np.where(pS_logsum < -2, 10 * (pS_logsum + 2)**2 / 2, 0)
+        
+        min_arclength = 0.3
+        arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
+        E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
+    
+    t_ab = np.linspace(0, 1, obs_kai_ab.shape[0])
+    n_points = n_mesh_intervals[0] * colloc_points_unshifted[0].size + 1
+    start = ode_models[0].n_par
+    stop = start + ode_models[0].n_dim * n_points
+    y = q[start:stop].reshape((ode_models[i].n_dim, n_points), order="F")
+    start = stop
+    stop = start + n_mesh_intervals[0] - 1
+    mesh_points = np.pad(q[start:stop], (1, 1), constant_values=(0, 1))
+    y_interp = util.interpolate(y, mesh_points, t_ab, colloc_points_unshifted[0])
+    start = stop
+    period06 = q[start]
+
+    std = 2 / 9 / np.sqrt(5)
+    B_bound = y_interp[7:].sum(axis=0)
+    B_bound = B_bound - B_bound.mean()
+    B_bound = B_bound / np.std(B_bound)
+    E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
+    
+    std = 2 / 3 / np.sqrt(5)
+    A_bound = ode_models[0].conservation_law[1, 1:-1]@y_interp
+    A_bound = A_bound - A_bound.mean()
+    A_bound = A_bound / np.std(A_bound)
+    E += np.trapz((A_bound - obs_kai_ab[:, 0])**2 / (2 * std**2), x=t_ab)
+
+    t_phos = np.linspace(0, 1, obs_kai_phos.shape[0])
+    y_interp = util.interpolate(y, mesh_points, t_phos, colloc_points_unshifted[0])
+    phos = y_interp[1:].sum(axis=0)
+    E += np.trapz(100 * (phos - obs_kai_phos) ** 2 / 2, x=t_phos)
+
+    n_points = n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1
+    start = start + 1
+    stop = start + ode_models[1].n_dim * n_points
+    y = q[start:stop].reshape((ode_models[1].n_dim, n_points), order="F")
+    start = stop
+    stop = start + n_mesh_intervals[1] - 1
+    mesh_points = np.pad(q[start:stop], (1, 1), constant_values=(0, 1))
+    y_interp = util.interpolate(y, mesh_points, t_ab, colloc_points_unshifted[1])
+
+    std = 2 / 9 /np.sqrt(5)
+    B_bound = y_interp[7:].sum(axis=0)
+    B_bound = B_bound - B_bound.mean()
+    B_bound = B_bound / np.std(B_bound)
+    E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
+
+    start = stop
+    period18 = q[start]
+
+    E += 100 * (period18 / period06 - 1.1)**2 / 2
+
+    return E
+
 @partial(jax.jit, static_argnames=("n_mesh_intervals",))
 def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points, n_mesh_intervals=60):
     
