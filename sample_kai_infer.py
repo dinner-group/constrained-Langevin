@@ -288,8 +288,8 @@ thin = 100
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
 #                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
-kai06 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), 6/35)
-kai18 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), 18/35)
+kai06 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=6/35)
+kai18 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=18/35)
 q0 = x[:kai.n_par + 2 * (kai.n_dim * n_points + n_mesh_intervals)]
 p0 = x[q0.size:2 * q0.size] 
 args = ((kai06, kai18), (colloc_points_unshifted, colloc_points_unshifted))
