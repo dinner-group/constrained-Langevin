@@ -290,14 +290,14 @@ thin = 100
 
 kai06 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=6/35)
 kai18 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=18/35)
-q0 = x[:kai.n_par + 2 * (kai.n_dim * n_points + n_mesh_intervals)]
+q0 = x[:kai06.n_par + 2 * (kai06.n_dim * n_points + n_mesh_intervals)]
 p0 = x[q0.size:2 * q0.size] 
 args = ((kai06, kai18), (colloc_points_unshifted, colloc_points_unshifted))
 potential = lambda *args:kai_bvp_potential_mm_multi(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 nlsol = nonlinear_solver.quasi_newton_bvp_multi_eqn_shared_k_symm_broyden
-linsol = linear_solver.lstsq_bvpjac_multi_eqn_shared_k
+linsol = linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nlsol, linsol=linsol, max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
