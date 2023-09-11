@@ -52,7 +52,7 @@ def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_point
     period1 = q[index]
     index = index + (n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1) * ode_models[1].n_dim + n_mesh_intervals[1]
     period2 = q[index]
-    E += 100 * (period1 - period2 / 2)**2
+    E += 100 * (period2 / period1 - 2)**2 / 2
 
     return E
 
@@ -68,7 +68,7 @@ x = np.load("ml_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 bounds = np.load("morris_lecar_bounds_nondim.npy")
 bounds_membrane_voltage = np.array([-35/84, 50/84])
 
-n_steps = 200000
+n_steps = 400000
 thin = 100
 
 #ml = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
