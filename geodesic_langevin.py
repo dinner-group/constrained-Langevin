@@ -224,7 +224,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     args_size = 0
 
     if len(args) > 0:
-        args_flatten = np.concatenate(tuple(x.ravel() for x in args))
+        args_flatten = jax.flatten_util.ravel_pytree(args)[0]
         args_size = args_flatten.size
 
     out = np.full((n_steps // thin, position.size + momentum.size + lagrange_multiplier.size + 1 + force.size + args_size), np.nan)
@@ -263,12 +263,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
             return position_0, -momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0
         position, momentum, lagrange_multiplier, energy, force, J_and_factor, args = jax.lax.cond(accept, on_accept, on_reject)
 
-        out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force])
-
-        if(args_size > 0):
-            args_flatten = np.concatenate(tuple(x.ravel() for x in args))
-            out_step = np.concatenate([out_step, args_flatten])
-        
+        out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force, jax.flatten_util.ravel_pytree(args)[0]])
         out = jax.lax.dynamic_update_slice(out, np.expand_dims(out_step, 0), (i // thin, 0))
         key_out = jax.lax.dynamic_update_slice(key_out, np.expand_dims(prng_key, 0), (i // thin, 0))
         return (i + 1, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out)
