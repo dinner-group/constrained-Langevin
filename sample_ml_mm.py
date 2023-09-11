@@ -48,12 +48,10 @@ def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_point
         y_smooth = util.weighted_average_periodic_smoothing(y[:, :-1].T)
         E += 10 * np.sum((y_smooth - y[:, :-1].T)**2)
     
-    start = ode_models[0].n_par
-    stop = start + (n_mesh_intervals[0] * colloc_points_unshifted[0].size + 1) * ode_models[0].n_dim
-    period1 = q[start:stop]
-    start = stop + n_mesh_intervals[0]
-    stop = start + (n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1) * ode_models[1].n_dim
-    period2 = q[start:stop]
+    index = ode_models[0].n_par + (n_mesh_intervals[0] * colloc_points_unshifted[0].size + 1) * ode_models[0].n_dim  + n_mesh_intervals[0] - 1
+    period1 = q[index]
+    index = index + (n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1) * ode_models[1].n_dim + n_mesh_intervals[1]
+    period2 = q[index]
     E += 100 * (period1 - period2 / 2)**2
 
     return E
@@ -95,8 +93,9 @@ resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid_multi_eqn_sha
 jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_multi_eqn_shared_k_symm_broyden,
-                                 linsol=linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k, max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+print(potential(q0, *args))
+#traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_multi_eqn_shared_k_symm_broyden, 
+#                                 linsol=linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k, max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
-np.save("ml_lc_%d_%d.npy"%(argp.iter, argp.process), traj_ml_lc)
-np.save("ml_lc_key_%d_%d.npy"%(argp.iter, argp.process), key_lc)
+#np.save("ml_lc_%d_%d.npy"%(argp.iter, argp.process), traj_ml_lc)
+#np.save("ml_lc_key_%d_%d.npy"%(argp.iter, argp.process), key_lc)
