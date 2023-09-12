@@ -149,7 +149,7 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
     start = stop
     period18 = q[start]
 
-    E += 100 * (period18 / period06 - 1.1)**2 / 2
+    E += 100 * (period06 / period18 - 1.1)**2 / 2
 
     return E
 
@@ -224,14 +224,14 @@ def kai_bvp_potential(q, ode_model, mesh_points):
     
     return E
 
-dt = 1e-2
+dt = 5e-3
 prng_key = np.load("kai_lc_key_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 friction = 1e-2
 
 n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 50000
+n_steps = 10000
 thin = 100
 
 
