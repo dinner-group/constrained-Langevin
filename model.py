@@ -993,9 +993,9 @@ class Morris_Lecar_nondim:
 
         par = par * self.par_scale
         dy = np.zeros_like(y)
-        dy = dy.at[0].set(par[0] - par[1] * (y[0] - par[2]) - par[3] * y[1] * (y[0] - 1) - par[4] * y[2] * (y[0] - par[5]) - par[6] / np.cosh((y[0] - par[7]) / par[8])**2 * (y[0] - par[5]))
-        dy = dy.at[1].set(((1 + np.tanh((y[0] - par[9]) / par[10])) / 2 - y[1]) * np.cosh((y[0] - par[9]) / par[11]))
-        dy = dy.at[2].set(np.exp(par[12]) * ((1 + np.tanh((y[0] - par[13]) / par[14])) / 2 - y[2]) * np.cosh((y[0] - par[13]) / par[15]))
+        dy = dy.at[0].set(par[0] - par[1] * (y[0] - par[2]) - par[3] * y[1] * y[0] - par[4] * y[2] * (y[0] - 1) - par[5] / np.cosh((y[0] - par[6]) / par[7])**2 * (y[0] - 1))
+        dy = dy.at[1].set(((1 + np.tanh((y[0] - par[8]) / par[9])) / 2 - y[1]) * np.cosh((y[0] - par[8]) / par[10]))
+        dy = dy.at[2].set(np.exp(par[11]) * ((1 + np.tanh((y[0] - par[12]) / par[13])) / 2 - y[2]) * np.cosh((y[0] - par[12]) / par[14]))
 
         return dy
 
