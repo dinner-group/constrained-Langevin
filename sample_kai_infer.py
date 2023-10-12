@@ -116,8 +116,10 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
 
     std = 2 / 9 / np.sqrt(5)
     B_bound = y_interp[7:].sum(axis=0)
-    B_bound = B_bound - B_bound.mean()
-    B_bound = B_bound / np.std(B_bound)
+    B_mean = B_bound.mean()
+    B_bound = B_bound - B_mean
+    B_scale = np.std(B_bound)
+    B_bound = B_bound / B_scale
     E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
     
     std = 2 / 3 / np.sqrt(5)
@@ -128,8 +130,12 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
 
     t_phos = np.linspace(0, 1, obs_kai_phos.shape[0])
     y_interp = util.interpolate(y, mesh_points, t_phos, colloc_points_unshifted[0])
-    phos = y_interp[1:].sum(axis=0)
-    E += np.trapz(100 * (phos - obs_kai_phos) ** 2 / 2, x=t_phos)
+    pT = y_interp[1:3].sum(axis=0)
+    pD = y_interp[np.array([3, 4, 7, 8, 11, 12])].sum(axis=0)
+    pS = y_interp[np.array([5, 6, 9, 10, 13, 14])].sum(axis=0)
+    E += np.trapz(1000 * (pT - obs_kai_phos[:, 0]) ** 2 / 2, x=t_phos)
+    E += np.trapz(1000 * (pS - obs_kai_phos[:, 1]) ** 2 / 2, x=t_phos)
+    E += np.trapz(1000 * (pD - obs_kai_phos[:, 2]) ** 2 / 2, x=t_phos)
 
     n_points = n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1
     start = start + 1
@@ -142,8 +148,8 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
 
     std = 2 / 9 /np.sqrt(5)
     B_bound = y_interp[7:].sum(axis=0)
-    B_bound = B_bound - B_bound.mean()
-    B_bound = B_bound / np.std(B_bound)
+    B_bound = B_bound - B_mean
+    B_bound = B_bound / B_scale
     E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
 
     start = stop
@@ -224,14 +230,14 @@ def kai_bvp_potential(q, ode_model, mesh_points):
     
     return E
 
-dt = 5e-3
+dt = 1e-2
 prng_key = np.load("kai_lc_key_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 friction = 1e-2
 
 n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 10000
+n_steps = 50000
 thin = 100
 
 
@@ -301,7 +307,6 @@ linsol = linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nlsol, linsol=linsol, max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
-
 
 np.save("kai_lc_%d_%d.npy"%(argp.iter, argp.process), traj_kai_lc)
 np.save("kai_lc_key_%d_%d.npy"%(argp.iter, argp.process), key_lc)
