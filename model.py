@@ -975,7 +975,7 @@ class Morris_Lecar:
 class Morris_Lecar_nondim:
 
     n_dim = 3
-    n_par = 16
+    n_par = 15
     not_algebraic = 1
     
     def __init__(self, par, par_scale=None, **kwargs):
