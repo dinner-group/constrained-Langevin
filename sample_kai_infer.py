@@ -133,9 +133,9 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
     pT = y_interp[1:3].sum(axis=0)
     pD = y_interp[np.array([3, 4, 7, 8, 11, 12])].sum(axis=0)
     pS = y_interp[np.array([5, 6, 9, 10, 13, 14])].sum(axis=0)
-    E += np.trapz(1000 * (pT - obs_kai_phos[:, 0]) ** 2 / 2, x=t_phos)
-    E += np.trapz(1000 * (pS - obs_kai_phos[:, 1]) ** 2 / 2, x=t_phos)
-    E += np.trapz(1000 * (pD - obs_kai_phos[:, 2]) ** 2 / 2, x=t_phos)
+    E += np.trapz(3000 * (pT - obs_kai_phos[:, 0]) ** 2 / 2, x=t_phos)
+    E += np.trapz(3000 * (pS - obs_kai_phos[:, 1]) ** 2 / 2, x=t_phos)
+    E += np.trapz(3000 * (pD - obs_kai_phos[:, 2]) ** 2 / 2, x=t_phos)
 
     n_points = n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1
     start = start + 1
