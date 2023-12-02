@@ -65,8 +65,8 @@ friction = 1e-2
 
 n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("ml_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
-bounds = np.load("morris_lecar_bounds_nondim.npy")
-bounds_membrane_voltage = np.array([-35/84, 50/84])
+#bounds = np.load("morris_lecar_bounds_nondim.npy")
+#bounds_membrane_voltage = np.array([-35/84, 50/84])
 
 n_steps = 400000
 thin = 100
@@ -84,10 +84,10 @@ thin = 100
 #                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 ml1 = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
-ml2 = model.Morris_Lecar_nondim(ml1.par, par_scale=np.ones_like(ml1.par).at[4].multiply(1/3))
+ml2 = model.Morris_Lecar_nondim(ml1.par, par_scale=np.ones_like(ml1.par).at[3].multiply(1/3))
 q0 = x[:ml1.n_par + 2 * (ml1.n_dim * n_points + n_mesh_intervals)]
 p0 = x[q0.size:2 * q0.size]
-args = ((ml1, ml2), (colloc_points_unshifted, colloc_points_unshifted), bounds, bounds_membrane_voltage)
+args = ((ml1, ml2), (colloc_points_unshifted, colloc_points_unshifted))
 potential = lambda *args:morris_lecar_mm_bvp_potential_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
