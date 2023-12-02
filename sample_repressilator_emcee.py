@@ -47,7 +47,7 @@ def log_probability(k, rp_dim):
 
     return E
 
-i = 19
+i = 31
 rp_dim = 3
 x = np.load("repressilator_%d_lc_emcee%d.npy"%(rp_dim, i - 1))[-1]
 n_walkers, n_dim = x.shape
