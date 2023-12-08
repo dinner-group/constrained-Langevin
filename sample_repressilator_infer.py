@@ -17,6 +17,7 @@ jax.config.update("jax_enable_x64", True)
 parser = argparse.ArgumentParser()
 parser.add_argument("-process", type=int, default=0)
 parser.add_argument("-iter", type=int, required=True)
+parser.add_argument("-n_dim", type=int, default=3)
 argp = parser.parse_args()
 
 data = np.load("repressilator_data.npy")
@@ -79,7 +80,7 @@ def repressilator_log_bvp_inference_potential(q, ode_model, mesh_points=np.linsp
     E += (period - period_ref)**2  / (2 * std**2)
     return E
 
-n_dim = 7
+n_dim = argp.n_dim
 dt = 1e-2
 prng_key = np.load("repressilator_%d_lc_infer_key_%d_%d.npy"%(n_dim, argp.iter - 1, argp.process))[-1]
 friction = 1e-1
