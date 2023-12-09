@@ -13,7 +13,13 @@ import scipy
 import scipy.integrate
 import emcee
 import multiprocessing
+import argparse
 jax.config.update("jax_enable_x64", True)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-iter", type=int, required=True)
+parser.add_argument("-n_dim", type=int, default=3)
+argp = parser.parse_args()
 
 numpy.random.seed(4)
 data = np.load("repressilator_data.npy")
@@ -47,9 +53,8 @@ def log_probability(k, rp_dim):
 
     return E
 
-i = 31
-rp_dim = 3
-x = np.load("repressilator_%d_lc_emcee%d.npy"%(rp_dim, i - 1))[-1]
+rp_dim = argp.n_dim
+x = np.load("repressilator_%d_lc_emcee%d.npy"%(rp_dim, argp.iter - 1))[-1]
 n_walkers, n_dim = x.shape
 #n_steps = 2000000 // n_walkers
 #thin = n_steps // 10000
@@ -57,8 +62,8 @@ n_steps = 200000
 thin = 100
 
 with multiprocessing.Pool() as pool:
-    sampler = emcee.EnsembleSampler(n_walkers, n_dim, log_probability, pool=pool, args=(3,))
+    sampler = emcee.EnsembleSampler(n_walkers, n_dim, log_probability, pool=pool, args=(rp_dim,))
     sampler.run_mcmc(x, n_steps)
-    np.save("repressilator_%d_lc_emcee%d.npy"%(rp_dim, i), sampler.get_chain()[::thin])
-    np.save("repressilator_%d_lc_emcee_LL%d.npy"%(rp_dim, i), sampler.get_log_prob()[::thin])
+    np.save("repressilator_%d_lc_emcee%d.npy"%(rp_dim, argp.iter), sampler.get_chain()[::thin])
+    np.save("repressilator_%d_lc_emcee_LL%d.npy"%(rp_dim, argp.iter), sampler.get_log_prob()[::thin])
     print(sampler.acceptance_fraction)
