@@ -279,7 +279,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     return out, key_out
 
 @partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23, 24))
-def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9, metropolize=False, reversibility_tol=None):
+def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9, metropolize=False, reversibility_tol=None, print_acceptance=False):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
@@ -306,12 +306,12 @@ def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     key_out = np.zeros((n_steps // thin, 2), dtype=np.uint32)
 
     def cond(carry):
-        i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = carry
+        i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out, n_accept = carry
         return (i < n_steps) & (energy < 2e3)
 
     def loop_body(carry):
         
-        i, position_0, momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0, out, success, prng_key, key_out = carry
+        i, position_0, momentum_0, lagrange_multiplier_0, energy_0, force_0, J_and_factor_0, args_0, out, success, prng_key, key_out, n_accept = carry
         accept = not metropolize
         success = True
 
@@ -341,9 +341,12 @@ def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
         out_step = np.concatenate([position, momentum, lagrange_multiplier, np.array([energy]), force, args_flatten])
         out = jax.lax.dynamic_update_slice(out, np.expand_dims(out_step, 0), (i // thin, 0))
         key_out = jax.lax.dynamic_update_slice(key_out, np.expand_dims(prng_key, 0), (i // thin, 0))
-        return (i + 1, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out)
+        return (i + 1, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out, n_accept + accept)
 
-    init = (0, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, True, prng_key, key_out)
-    i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out = jax.lax.while_loop(cond, loop_body, init)
+    init = (0, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, True, prng_key, key_out, 0)
+    i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out, n_accept = jax.lax.while_loop(cond, loop_body, init)
+
+    if print_acceptance:
+        jax.debug.print("Acceptance: {}" n_accept / n_steps)
     
     return out, key_out
