@@ -18,6 +18,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-process", type=int, default=0)
 parser.add_argument("-iter", type=int, required=True)
 parser.add_argument("-n_dim", type=int, default=3)
+parser.add_argument("-n_steps", type=int, default=1000000)
+parser.add_argument("-thin", type=int, default=1)
 argp = parser.parse_args()
 
 data = np.load("repressilator_data.npy")
@@ -99,11 +101,11 @@ jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_int
 n_constraints = resid(q0, *args).shape[0]
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 
-n_steps = 1000000
-thin = 100
+n_steps = argp.n_steps
+thin = argp.thin
 
 traj_rp_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
-                                 max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+                                 max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6, print_acceptance=True)
 
 np.save("repressilator_%d_lc_infer_%d_%d.npy"%(n_dim, argp.iter, argp.process), traj_rp_lc)
 np.save("repressilator_%d_lc_infer_key_%d_%d.npy"%(n_dim, argp.iter, argp.process), key_lc)

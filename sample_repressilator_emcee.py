@@ -33,13 +33,13 @@ def log_probability(k, rp_dim):
     std = 5e-2
     t_eval = np.linspace(25.05, 30, 100)
     E = 0
-    E -= 100 * np.where(k[-3:] < 0, k[-3:]**2, 0.).sum()
-    E -= 100 * np.where(k[-3:] > 10, (k[-3:] - 10)**2, 0.).sum()
-    E -= 100 * np.where(k[:-3] > 5, (k[:-3] - 5)**2, 0.).sum()
-    E -= 100 * np.where(k[:-3] < -5, (k[:-3] + 5)**2, 0.).sum()
+    E -= 100 * np.where(k[-rp_dim:] < 0, k[-rp_dim:]**2, 0.).sum()
+    E -= 100 * np.where(k[-rp_dim:] > 10, (k[-rp_dim:] - 10)**2, 0.).sum()
+    E -= 100 * np.where(k[:-rp_dim] > 5, (k[:-rp_dim] - 5)**2, 0.).sum()
+    E -= 100 * np.where(k[:-rp_dim] < -5, (k[:-rp_dim] + 5)**2, 0.).sum()
 
     try:
-        traj = scipy.integrate.solve_ivp(rp.f, jac=rp.jac, y0=np.log(np.array([1, 1.2, 1])), t_span=(0, 30), t_eval=t_eval, args=(k,), method="LSODA", rtol=1e-6)
+        traj = scipy.integrate.solve_ivp(rp.f, jac=rp.jac, y0=np.log(np.ones(rp_dim).at[-2].add(0.2)), t_span=(0, 30), t_eval=t_eval, args=(k,), method="LSODA", rtol=1e-6)
     except ValueError:
         return -np.inf
 
@@ -58,7 +58,7 @@ x = np.load("repressilator_%d_lc_emcee%d.npy"%(rp_dim, argp.iter - 1))[-1]
 n_walkers, n_dim = x.shape
 #n_steps = 2000000 // n_walkers
 #thin = n_steps // 10000
-n_steps = 200000
+n_steps = 50000
 thin = 100
 
 with multiprocessing.Pool() as pool:
