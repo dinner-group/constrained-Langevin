@@ -278,7 +278,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     
     return out, key_out
 
-@partial(jax.jit, static_argnums=(5, 6, 8, 9, 10, 16, 17, 18, 19, 20, 21, 22, 23, 24))
+@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "A", "B", "O", "nlsol", "linsol", "max_newton_iter", "tol", "metropolize", "reversibility_tol", "print_acceptance"))
 def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9, metropolize=False, reversibility_tol=None, print_acceptance=False):
 
     if jac_constraint is None:
@@ -347,6 +347,6 @@ def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     i, position, momentum, lagrange_multiplier, energy, force, J_and_factor, args, out, success, prng_key, key_out, n_accept = jax.lax.while_loop(cond, loop_body, init)
 
     if print_acceptance:
-        jax.debug.print("Acceptance: {}" n_accept / n_steps)
+        jax.debug.print("Acceptance: {}", n_accept / n_steps)
     
     return out, key_out
