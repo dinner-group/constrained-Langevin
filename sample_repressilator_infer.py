@@ -61,7 +61,7 @@ def repressilator_log_bvp_mm_inference_potential(q, ode_model, *args, n_mesh_int
     t = t_eval / t_eval[-1]
     y_interp = util.interpolate(y, mesh_points, t)
     E = repressilator_log_bvp_mm_potential(q, ode_model, *args, n_mesh_intervals=n_mesh_intervals)
-    E += np.trapz((data_period_average - np.exp(y_interp[0]))**2 / (2 * std**2), x=t)
+    E += scipy.integrate.trapezoid((data_period_average - np.exp(y_interp[0]))**2 / (2 * std**2), x=t)
     E += (period - period_ref)**2  / (2 * std**2)
     return E
 
@@ -78,7 +78,7 @@ def repressilator_log_bvp_inference_potential(q, ode_model, mesh_points=np.linsp
     t = t_eval / t_eval[-1]
     y_interp = util.interpolate(y, mesh_points, t)
     E = defining_systems.repressilator_log_bvp_potential(q, ode_model, mesh_points)
-    E += np.trapz((data_period_average - np.exp(y_interp[0]))**2 / (2 * std**2), x=t)
+    E += scipy.integrate.trapezoid((data_period_average - np.exp(y_interp[0]))**2 / (2 * std**2), x=t)
     E += (period - period_ref)**2  / (2 * std**2)
     return E
 

@@ -56,19 +56,19 @@ def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points
     B_bound = y_interp[7:].sum(axis=0)
     B_bound = B_bound - B_bound.mean()
     B_bound = B_bound / np.std(B_bound)
-    E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t)
+    E += scipy.integrate.trapezoid((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t)
     
     std = 2 / 3 / np.sqrt(5)
     A_bound = ode_model.conservation_law[1, 1:-1]@y_interp
     A_bound = A_bound - A_bound.mean()
     A_bound = A_bound / np.std(A_bound)
-    E += np.trapz((A_bound - obs_kai_ab[:, 0])**2 / (2 * std**2), x=t)
+    E += scipy.integrate.trapezoid((A_bound - obs_kai_ab[:, 0])**2 / (2 * std**2), x=t)
 
     t = np.linspace(0, 1, obs_kai_phos.shape[0])
     y_interp = util.interpolate(y, mesh_points, t, colloc_points_unshifted)
 
     phos = y_interp[1:].sum(axis=0)
-    E += np.trapz(100 * (phos - obs_kai_phos) ** 2 / 2, x=t)
+    E += scipy.integrate.trapezoid(100 * (phos - obs_kai_phos) ** 2 / 2, x=t)
 
     return E
 
@@ -120,22 +120,22 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
     B_bound = B_bound - B_mean
     B_scale = np.std(B_bound)
     B_bound = B_bound / B_scale
-    E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
+    E += scipy.integrate.trapezoid((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
     
     std = 2 / 3 / np.sqrt(5)
     A_bound = ode_models[0].conservation_law[1, 1:-1]@y_interp
     A_bound = A_bound - A_bound.mean()
     A_bound = A_bound / np.std(A_bound)
-    E += np.trapz((A_bound - obs_kai_ab[:, 0])**2 / (2 * std**2), x=t_ab)
+    E += scipy.integrate.trapezoid((A_bound - obs_kai_ab[:, 0])**2 / (2 * std**2), x=t_ab)
 
     t_phos = np.linspace(0, 1, obs_kai_phos.shape[0])
     y_interp = util.interpolate(y, mesh_points, t_phos, colloc_points_unshifted[0])
     pT = y_interp[1:3].sum(axis=0)
     pD = y_interp[np.array([3, 4, 7, 8, 11, 12])].sum(axis=0)
     pS = y_interp[np.array([5, 6, 9, 10, 13, 14])].sum(axis=0)
-    E += np.trapz(3000 * (pT - obs_kai_phos[:, 0]) ** 2 / 2, x=t_phos)
-    E += np.trapz(3000 * (pS - obs_kai_phos[:, 1]) ** 2 / 2, x=t_phos)
-    E += np.trapz(3000 * (pD - obs_kai_phos[:, 2]) ** 2 / 2, x=t_phos)
+    E += scipy.integrate.trapezoid(3000 * (pT - obs_kai_phos[:, 0]) ** 2 / 2, x=t_phos)
+    E += scipy.integrate.trapezoid(3000 * (pS - obs_kai_phos[:, 1]) ** 2 / 2, x=t_phos)
+    E += scipy.integrate.trapezoid(3000 * (pD - obs_kai_phos[:, 2]) ** 2 / 2, x=t_phos)
 
     n_points = n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1
     start = start + 1
@@ -150,7 +150,7 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
     B_bound = y_interp[7:].sum(axis=0)
     B_bound = B_bound - B_mean
     B_bound = B_bound / B_scale
-    E += np.trapz((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
+    E += scipy.integrate.trapezoid((B_bound - obs_kai_ab[:, 1])**2 / (2 * std**2), x=t_ab)
 
     start = stop
     period18 = q[start]
@@ -189,7 +189,7 @@ def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gaus
     kaiB = np.exp(y_interp[8:-1]).sum(axis=0)
     kaiB = kaiB - kaiB.mean()
     kaiB = kaiB / np.std(kaiB)
-    E += np.trapz((kaiB - obs_mean)**2 / (2 * std**2), x=t)
+    E += scipy.integrate.trapezoid((kaiB - obs_mean)**2 / (2 * std**2), x=t)
     
     y_smooth = util.weighted_average_periodic_smoothing(y[:, :-1].T)
     E += 10 * np.sum((y_smooth - y[:, :-1].T)**2)
@@ -226,7 +226,7 @@ def kai_bvp_potential(q, ode_model, mesh_points):
     kaiB = y_interp[7:].sum(axis=0)
     kaiB = kaiB - kaiB.mean()
     kaiB = kaiB / np.std(kaiB)
-    E += np.trapz((kaiB - obs_mean)**2 / (2 * std**2), x=t)
+    E += scipy.integrate.trapezoid((kaiB - obs_mean)**2 / (2 * std**2), x=t)
     
     return E
 
