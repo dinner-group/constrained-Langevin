@@ -23,7 +23,7 @@ argp = parser.parse_args()
 def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=(util.gauss_points, util.gauss_points), bounds=None, bounds_membrane_voltage=None, n_mesh_intervals=(60, 60)):
 
     E = 0
-    k = q[ode_models[0].n_par]
+    k = q[:ode_models[0].n_par]
     start = ode_models[0].n_par
     min_arclength = 0.3
 
@@ -47,12 +47,13 @@ def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_point
 
         y_smooth = util.weighted_average_periodic_smoothing(y[:, :-1].T)
         E += 10 * np.sum((y_smooth - y[:, :-1].T)**2)
-    
+
     index = ode_models[0].n_par + (n_mesh_intervals[0] * colloc_points_unshifted[0].size + 1) * ode_models[0].n_dim  + n_mesh_intervals[0] - 1
     period1 = q[index]
     index = index + (n_mesh_intervals[1] * colloc_points_unshifted[1].size + 1) * ode_models[1].n_dim + n_mesh_intervals[1]
     period2 = q[index]
     E += 100 * (period2 / period1 - 2)**2 / 2
+    E += np.where(k[6] > k[8], 100 * (k[6] - k[8])**2, 0)
 
     return E
 
@@ -68,8 +69,8 @@ x = np.load("ml_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 #bounds = np.load("morris_lecar_bounds_nondim.npy")
 #bounds_membrane_voltage = np.array([-35/84, 50/84])
 
-n_steps = 400000
-thin = 100
+n_steps = 10
+thin = 1
 
 #ml = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
 #q0 = x[:ml.n_par + ml.n_dim * n_points + 1 + n_mesh_intervals - 1]

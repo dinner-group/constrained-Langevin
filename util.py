@@ -101,7 +101,7 @@ def recompute_mesh(y, mesh_old, gauss_points=gauss_points, n_smooth=4):
     _, deriv = jax.lax.scan(loop_body, init=0, xs=None, length=mesh_old.size - 1)
     midpoints = (mesh_old[1:] + mesh_old[:-1]) / 2
     deriv = np.pad((deriv[1:] - deriv[:-1]).T / (midpoints[1:] - midpoints[:-1]), ((0, 0), (1, 1)), mode="edge")
-    a = np.maximum(1, scipy.integrate.trapezoid(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (gauss_points.size + 1))), x=mesh_old)**(1 + 2 * (gauss_points.size + 1)))
+    a = np.maximum(1, jax.scipy.integrate.trapezoid(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (gauss_points.size + 1))), x=mesh_old)**(1 + 2 * (gauss_points.size + 1)))
     mesh_density = (1 + np.sum(deriv**2, axis=0) / a)**(1 / (1 + 2 * (gauss_points.size + 1)))
     mesh_density = weighted_average_smoothing(mesh_density, n_smooth)
     mesh_mass = np.pad(np.cumsum((mesh_density[1:] + mesh_density[:-1]) * (mesh_old[1:] - mesh_old[:-1])) / 2, (1, 0))

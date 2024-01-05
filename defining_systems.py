@@ -150,7 +150,7 @@ def periodic_bvp_mm_mesh_resid_hermite3(y, k, mesh_points, ode_model, n_smooth=4
     ydot = jax.vmap(lambda yy:ode_model.f(0., yy, k))(y.T).T
     deriv = 2 * y[:, :-1] + interval_width * ydot[:, :-1] - 2 * y[:, 1:] + interval_width * ydot[:, 1:]
     deriv = np.pad((deriv[:, 1:] - deriv[:, :-1]) / (midpoints[1:] - midpoints[:-1]), ((0, 0), (1, 1)), mode="edge")
-    a = np.maximum(1, scipy.integrate.trapezoid(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (colloc_points_unshifted.size + 3))), x=mesh_points)**(1 + 2 * (colloc_points_unshifted.size + 3)))
+    a = np.maximum(1, jax.scipy.integrate.trapezoid(np.sum(deriv**2, axis=0)**(1 / (1 + 2 * (colloc_points_unshifted.size + 3))), x=mesh_points)**(1 + 2 * (colloc_points_unshifted.size + 3)))
     mesh_density = (1 + np.sum(deriv**2, axis=0) / a)**(1 / (1 + 2 * (colloc_points_unshifted.size + 3)))
     mesh_density = util.weighted_average_smoothing(mesh_density, n_smooth)
     mesh_mass_interval = interval_width * (mesh_density[1:] + mesh_density[:-1]) / 2
@@ -436,10 +436,10 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     min_arclength = 0.3
     max_mesh_density = 10
     _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
-    #mesh_quality = (mesh_points.size - 1) * (mesh_density[1:] + mesh_density[:-1]) * (mesh_points[1:] - mesh_points[:-1]) / (2 * scipy.integrate.trapezoid(mesh_density, mesh_points))
+    #mesh_quality = (mesh_points.size - 1) * (mesh_density[1:] + mesh_density[:-1]) * (mesh_points[1:] - mesh_points[:-1]) / (2 * jax.scipy.integrate.trapezoid(mesh_density, mesh_points))
     
     #E += 20 * (util.smooth_max(mesh_quality, smooth_max_temperature=6) - 1)**2
-    mesh_density /= scipy.integrate.trapezoid(mesh_density, x=mesh_points)
+    mesh_density /= jax.scipy.integrate.trapezoid(mesh_density, x=mesh_points)
     mesh_density_max_val = util.smooth_max(mesh_density, smooth_max_temperature=6)
 
     E += np.where(mesh_density_max_val >= max_mesh_density, 5 * (mesh_density_max_val - max_mesh_density)**2, 0)
@@ -621,10 +621,10 @@ def brusselator_bvp_fourier_potential(q, fft_points=500):
     
     min_arclength = 0.5
     max_curvature = 5
-    arclength = scipy.integrate.trapezoid(np.linalg.norm(fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - ydot_coeff.shape[1] // 2)))), axis=0), x=np.linspace(0, 1, fft_points))
+    arclength = jax.scipy.integrate.trapezoid(np.linalg.norm(fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(ydot_coeff), ((0, 0), (0, fft_points // 2 - ydot_coeff.shape[1] // 2)))), axis=0), x=np.linspace(0, 1, fft_points))
     yddot = fft_points * np.fft.irfft(np.pad(util.fft_trigtoexp(yddot_coeff), ((0, 0), (0, fft_points // 2 - yddot_coeff.shape[1] // 2))))
     curvature = (1 + np.linalg.norm(yddot, axis=0)**2)**(1/4)
-    curvature /= scipy.integrate.trapezoid(curvature, np.linspace(0, 1, fft_points))
+    curvature /= jax.scipy.integrate.trapezoid(curvature, np.linspace(0, 1, fft_points))
     
     E += 100 * np.where(np.abs(q[:model.Brusselator.n_par]) > np.log(100), (np.abs(q[:model.Brusselator.n_par]) - np.log(100))**2, 0).sum()
     E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
