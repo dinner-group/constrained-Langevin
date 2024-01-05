@@ -134,7 +134,7 @@ def factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ):
     for i in range(len(J)):
         col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
 
-    Jk = np.vstack(np.pad(np.vstack(J[i].Jk[:, :, :J[i].n_par]), ((0, J[i].shape[0] - J[i].Jk.shape[0] * J[i].Jk.shape[1]), (0, 0))) for i in range(len(J)))
+    Jk = np.vstack([np.pad(np.vstack(J[i].Jk[:, :, :J[i].n_par]), ((0, J[i].shape[0] - J[i].Jk.shape[0] * J[i].Jk.shape[1]), (0, 0))) for i in range(len(J))])
     Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[2] - J_i.n_par for J_i in J]))))
 
     for i in range(len(J)):
