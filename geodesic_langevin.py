@@ -278,6 +278,32 @@ def gBAOAB(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin,
     
     return out, key_out
 
+@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "tol", "metropolize", "reversibility_tol", "print_acceptance"))
+def sample(dynamic_vars, dt, n_steps, thin, potential, stepper, print_acceptance=False, *args, **kwargs):
+
+    def cond(carry):
+        i, vars_to_save, vars_to_discard, n_accept, out = carry
+        return (i < n_steps) & np.all(np.isfinite(vars_to_save)) & np.all(np.isfinite(vars_to_discard))
+
+    def loop_body(carry):
+        i, vars_to_save, vars_to_discard, n_accept, out = carry
+        vars_to_save, vars_to_discard, accept = stepper(*vars_to_save, *vars_to_discard, dt=dt, potential=potential, *args, **kwargs)
+        vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
+        out_step = jax.lax.dynamic_update_slice(out, np.expand_dims(vars_to_save_flatten, 0), (i // thin, 0))
+        return i + 1, vars_to_save, vars_to_discard, n_accept + accept, out
+
+    vars_to_save, vars_to_discard, accept = stepper(*dynamic_vars, dt=dt, potential=potential, *args, **kwargs)
+    vars_to_save_flatten = jax.flatten_util.ravel_pytree(out_step)[0]
+    out = np.full((n_steps // thin, vars_to_save_flatten.size), np.nan)
+    out = out.at[0].set(out_step)
+    n_accept = accept
+    init = (1, vars_to_save, vars_to_discard, n_accept, out)
+
+    if print_acceptance:
+        jax.debug.print("{}", n_accept / n_steps
+
+    return jax.lax.while_loop(cond, loop_body, init)[-1]
+
 @partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "A", "B", "O", "nlsol", "linsol", "max_newton_iter", "tol", "metropolize", "reversibility_tol", "print_acceptance"))
 def gOBABO(position, momentum, lagrange_multiplier, dt, friction, n_steps, thin, prng_key, potential, constraint, jac_constraint=None, inverse_mass=None, energy=None, force=None, args=(), temperature=1, A=rattle_drift, B=rattle_kick, O=rattle_noise, nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9, metropolize=False, reversibility_tol=None, print_acceptance=False):
 
