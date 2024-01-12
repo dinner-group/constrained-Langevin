@@ -469,7 +469,7 @@ def quasi_newton_bvp_symm_broyden_resid(x, resid, jac_prev, jac, inverse_mass=No
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnums=(1, 2, 3, 4))
+@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, *args, **kwargs):
 
     if jac is None:

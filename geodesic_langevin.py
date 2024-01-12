@@ -269,7 +269,7 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
 
     return vars_to_save, vars_to_discard, accept
 
-@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance"))
+@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance", "n_mesh_intervals", "n_smooth"))
 def sample(dynamic_vars, dt, n_steps, thin, potential, stepper, *args, print_acceptance=False, **kwargs):
 
     def cond(carry):
