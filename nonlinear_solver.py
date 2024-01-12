@@ -6,7 +6,7 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 4))
-def newton(x, resid, jac=None, max_iter=20, tol=1e-9, args=(), **kwargs):
+def newton(x, resid, jac=None, max_iter=20, tol=1e-9, *args, **kwargs):
 
     if jac is None:
         jac = jax.jacfwd(resid)
