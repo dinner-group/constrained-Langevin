@@ -73,7 +73,7 @@ def rattle_kick(position, momentum, energy=None, force=None, dt=None, potential=
     return position, momentum_new, lagrange_multiplier_new, energy, force, J_and_factor
 
 @partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "reversibility_tol"))
-def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, J_and_factor=None, linsol=linear_solver.qr_lstsq_rattle, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, reversibility_tol=None, *args, **kwargs):
+def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, J_and_factor=None, linsol=linear_solver.qr_lstsq_rattle, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, reversibility_tol=None, *args, inverse_mass=None, **kwargs):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
@@ -84,8 +84,8 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
         Jcons = J_and_factor[0]
     
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, args_new, success, _ = nlsol(position_new, constraint, jac_prev=Jcons, jac=jac_constraint, max_iter=max_newton_iter, tol=constraint_tol, J_and_factor=J_and_factor, *args, **kwargs)
-    Jcons = jac_constraint(position_new, *args_new)
+    position_new, success, n_iter = nlsol(position_new, constraint, jac_prev=Jcons, jac=jac_constraint, max_iter=max_newton_iter, tol=constraint_tol, J_and_factor=J_and_factor, *args, **kwargs)
+    Jcons = jac_constraint(position_new, *args, **kwargs)
     velocity_new = (position_new - position) / dt
 
     if inverse_mass is None:
@@ -100,7 +100,7 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
 
     if reversibility_tol is not None:
         position_rev, momentum_rev, lagrange_multiplier_rev, _, success_rev = rattle_drift(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, 
-                                                                                                     args_new, nlsol, linsol, max_newton_iter, constraint_tol, reversibility_tol=None, *args, **kwargs)
+                                                                                           linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol=None, *args, inverse_mass=inverse_mass, **kwargs)
         success = success & success_rev & np.all(np.abs(position - position_rev) < reversibility_tol)
 
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success
@@ -119,7 +119,7 @@ def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, 
         
     ode_model = args[0]
     position_new = position + dt * velocity(momentum, inverse_mass)
-    position_new, args_new, success, n_iter = nlsol(position_new, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, J_and_factor=J_and_factor, args=args)
+    position_new, success, n_iter = nlsol(position_new, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, J_and_factor=J_and_factor, args=args)
     
     def cond(carry):
         position_0, position_1, mesh_0, mesh_1, args, success, n_iter = carry
@@ -134,7 +134,7 @@ def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, 
         args_new = list(args_new)
         args_new[1] = mesh_2
         args_new = tuple(args_new)
-        position_2, args_new, success_inner, n_iter_inner = nlsol(position_1, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, J_and_factor=J_and_factor, args=args_new)
+        position_2, success_inner, n_iter_inner = nlsol(position_1, constraint, Jcons, jac_constraint, inverse_mass, max_newton_iter, J_and_factor=J_and_factor, args=args_new)
         return position_1, position_2, mesh_1, mesh_2, args_new, success & success_inner, n_iter + n_iter_inner
     
     init = (position, position_new, args[1], args[1], args, True, n_iter)
@@ -188,7 +188,7 @@ def rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_con
     W, lagrange_multiplier_new, J_and_factor = linsol(Jcons, W, J_and_factor, inverse_mass)
     momentum_new = drag * momentum + W
 
-    return position, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key
+    return position, momentum_new, lagrange_multiplier_new, J_and_factor, prng_key
 
 @partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
 def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
@@ -204,6 +204,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         Jcons = jac_constraint(position, *args, **kwargs)
         _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
 
+    prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
     accept = True
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, 
                                                                                                                linsol, *args, **kwargs)
@@ -223,10 +224,11 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         accept = (H_0 - H > np.log(u))
 
     accept = accept & success
-    vars_to_save = np.where(accept, (position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key), (position, momentum, lagrange_multiplier, energy, force, prng_key))
-    vars_to_discard = np.where(accept, (J_and_factor_new), J_and_factor)
+    vars_to_save, vars_to_discard = jax.lax.cond(accept, 
+                                                 lambda:((position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key.view(np.float64)), (J_and_factor_new,)), 
+                                                 lambda:((position, momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
 
-    return vars_to_discard, vars_to_save, accept
+    return vars_to_save, vars_to_discard, accept
 
 @partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
 def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
@@ -242,12 +244,13 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         Jcons = jac_constraint(position, *args, **kwargs)
         _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
 
+    prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
     accept = True
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, 
                                                                                                                linsol, *args, **kwargs)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success = rattle_drift(position_new, momentum_new, dt, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, 
-                                                                                                  reversibility_tol, *args, **kwargs)
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success = rattle_drift(position_new, momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, 
+                                                                                                  linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new = rattle_kick(position_new, momentum_new, None, None, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, 
                                                                                                                linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position_new, momentum_new, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
@@ -260,33 +263,34 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         accept = (H_0 - H > np.log(u))
 
     accept = accept & success
-    vars_to_save = np.where(accept, (position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key), (position, momentum, lagrange_multiplier, energy, force, prng_key))
-    vars_to_discard = np.where(accept, (J_and_factor_new), J_and_factor)
+    vars_to_save, vars_to_discard = jax.lax.cond(accept, 
+                                                 lambda:((position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key.view(np.float64)), (J_and_factor_new,)), 
+                                                 lambda:((position, momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
 
-    return vars_to_discard, vars_to_save, accept
+    return vars_to_save, vars_to_discard, accept
 
 @partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance"))
 def sample(dynamic_vars, dt, n_steps, thin, potential, stepper, *args, print_acceptance=False, **kwargs):
 
     def cond(carry):
         i, vars_to_save, vars_to_discard, n_accept, out = carry
-        return (i < n_steps) & np.all(np.isfinite(vars_to_save)) & np.all(np.isfinite(vars_to_discard))
+        return (i < n_steps) & np.all(np.isfinite(jax.flatten_util.ravel_pytree(vars_to_save)[0])) & np.all(np.isfinite(jax.flatten_util.ravel_pytree(vars_to_discard)[0]))
 
     def loop_body(carry):
         i, vars_to_save, vars_to_discard, n_accept, out = carry
         vars_to_save, vars_to_discard, accept = stepper(*vars_to_save, *vars_to_discard, dt=dt, potential=potential, *args, **kwargs)
         vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
-        out_step = jax.lax.dynamic_update_slice(out, np.expand_dims(vars_to_save_flatten, 0), (i // thin, 0))
+        out = jax.lax.dynamic_update_slice(out, np.expand_dims(vars_to_save_flatten, 0), (i // thin, 0))
         return i + 1, vars_to_save, vars_to_discard, n_accept + accept, out
 
     vars_to_save, vars_to_discard, accept = stepper(*dynamic_vars, dt=dt, potential=potential, *args, **kwargs)
-    vars_to_save_flatten = jax.flatten_util.ravel_pytree(out_step)[0]
+    vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
     out = np.full((n_steps // thin, vars_to_save_flatten.size), np.nan)
-    out = out.at[0].set(out_step)
+    out = out.at[0].set(vars_to_save_flatten)
     n_accept = accept
     init = (1, vars_to_save, vars_to_discard, n_accept, out)
 
     if print_acceptance:
-        jax.debug.print("{}", n_accept / n_steps
+        jax.debug.print("{}", n_accept / n_steps)
 
     return jax.lax.while_loop(cond, loop_body, init)[-1]
