@@ -226,7 +226,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     accept = accept & success
     vars_to_save, vars_to_discard = jax.lax.cond(accept, 
                                                  lambda:((position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key.view(np.float64)), (J_and_factor_new,)), 
-                                                 lambda:((position, momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
+                                                 lambda:((position, -momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
 
     return vars_to_save, vars_to_discard, accept
 
@@ -265,7 +265,7 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     accept = accept & success
     vars_to_save, vars_to_discard = jax.lax.cond(accept, 
                                                  lambda:((position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key.view(np.float64)), (J_and_factor_new,)), 
-                                                 lambda:((position, momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
+                                                 lambda:((position, -momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
 
     return vars_to_save, vars_to_discard, accept
 
