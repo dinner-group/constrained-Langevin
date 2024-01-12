@@ -69,8 +69,8 @@ x = np.load("ml_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 #bounds = np.load("morris_lecar_bounds_nondim.npy")
 #bounds_membrane_voltage = np.array([-35/84, 50/84])
 
-n_steps = 10
-thin = 1
+n_steps = 400000
+thin = 100
 
 #ml = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
 #q0 = x[:ml.n_par + ml.n_dim * n_points + 1 + n_mesh_intervals - 1]
