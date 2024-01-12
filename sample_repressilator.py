@@ -39,7 +39,7 @@ thin = 100
 
 traj_rp_lc, key_lc = lgvn.gBAOAB(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac,
                                  A=lgvn.rattle_drift_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
-                                 max_newton_iter=20, tol=1e-8, args=args)
+                                 max_newton_iter=20, constraint_tol=1e-8, args=args)
 
 np.save("repressilator_lc%d.npy"%(i), traj_rp_lc)
 np.save("repressilator_lc_key%d.npy"%(i), key_lc)

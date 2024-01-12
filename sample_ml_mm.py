@@ -69,8 +69,8 @@ x = np.load("ml_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 #bounds = np.load("morris_lecar_bounds_nondim.npy")
 #bounds_membrane_voltage = np.array([-35/84, 50/84])
 
-n_steps = 10
-thin = 1
+n_steps = 400000
+thin = 100
 
 #ml = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
 #q0 = x[:ml.n_par + ml.n_dim * n_points + 1 + n_mesh_intervals - 1]
@@ -82,7 +82,7 @@ thin = 1
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 #traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
-#                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+#                                  max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 ml1 = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
 ml2 = model.Morris_Lecar_nondim(ml1.par, par_scale=np.ones_like(ml1.par).at[3].multiply(1/3))
@@ -95,7 +95,7 @@ jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_multi_eqn_shared_k_symm_broyden, 
-                                 linsol=linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k, max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+                                 linsol=linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k, max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 np.save("ml_lc_%d_%d.npy"%(argp.iter, argp.process), traj_ml_lc)
 np.save("ml_lc_key_%d_%d.npy"%(argp.iter, argp.process), key_lc)
