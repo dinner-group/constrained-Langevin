@@ -288,7 +288,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnums=(1, 3, 5, 6))
+@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
 def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
     
     if inverse_mass is None:
@@ -307,9 +307,9 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
 
     Jk_factor = linear_solver.factor_bvpjac_k(jac_prev, J_LQ)
 
-    dx, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
+    dx, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
     x = x + dx
-    v, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
+    v, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -322,7 +322,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args), J_LQ, Jk_factor, sqrtMinv)
+        v, _ = linear_solver.lstsq_bvpjac(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
