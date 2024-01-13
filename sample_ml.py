@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 
 @partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12, 13))
 def rattle_drift_ml_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, 
-                                    constraint_args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, tol=1e-9):
+                                    constraint_args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, constraint_tol=1e-9):
     
     mesh_points = constraint_args[0]
     y = position[model.Morris_Lecar.n_par:-1]
@@ -32,7 +32,7 @@ def rattle_drift_ml_bvp_mm(position, momentum, lagrange_multiplier, dt, potentia
     constraint_args[0] = mesh_new
     constraint_args = tuple(constraint_args)
     return lgvn.rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint, inverse_mass, J_and_factor, 
-                             constraint_args, nlsol, linsol, max_newton_iter, tol)
+                             constraint_args, nlsol, linsol, max_newton_iter, constraint_tol)
 
 dt = 1e-2
 #prng_key = np.load("ml_lc_key%d.npy"%(i - 1))[-1]
@@ -78,7 +78,7 @@ while n_steps > 0:
     
     traj_br_lc, key_lc = lgvn.gBAOAB(q1, p1, l1, dt, friction, n_steps, thin, prng_key, U, f, J,\
                                      energy=energy, force=force, A=rattle_drift_ml_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden,\
-                                     linsol=linear_solver.qr_lstsq_rattle_bvp, max_newton_iter=100, tol=1e-8, args=(mesh_points, bounds), inverse_mass=Minv)
+                                     linsol=linear_solver.qr_lstsq_rattle_bvp, max_newton_iter=100, constraint_tol=1e-8, args=(mesh_points, bounds), inverse_mass=Minv)
     
     n_success = np.isfinite(traj_br_lc[:, 0]).sum() - 10
 

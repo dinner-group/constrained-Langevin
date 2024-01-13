@@ -30,7 +30,7 @@ l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 n_steps = 10000000
 thin = 100
 
-traj, key = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, nlsol=nonlinear_solver.quasi_newton_rattle_symm_1, max_newton_iter=100, tol=1e-9, metropolize=True, reversibility_tol=1e-9)
+traj, key = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, nlsol=nonlinear_solver.quasi_newton_rattle_symm_1, max_newton_iter=100, constraint_tol=1e-9, metropolize=True, reversibility_tol=1e-9)
 
 np.save("kaiabc_hb%d.npy"%(i), traj)
 np.save("kaiabc_hb_key%d.npy"%(i), key)
