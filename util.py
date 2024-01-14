@@ -623,13 +623,13 @@ class BVPMMJac:
         Jbc_left = self.Jbc_left * Dy[:self.n_dim]
         Jbc_right = self.Jbc_right * Dy[-self.n_dim:]
         
-        return BVPMMJac(Jy, Jk, Jmesh, self.n_dim, self.n_par, Jbc_left, Jbc_right)
+        return BVPMMJac(Jy, Jk, Jmesh, self.n_dim, self.n_par, Jbc_left, Jbc_right, self.colloc_points_unshifted)
 
     @jax.jit
     def lq_factor(self):
 
         R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))
-        Q_N_dim = self.Jy.shape[2] + self.Jmesh.shape[0] - 2
+        Q_N_dim = self.Jy.shape[2] + self.Jy.shape[0] - 3
         Q_c = np.zeros(Q_N_dim * (Q_N_dim + 1) * (2 * Q_N_dim + 1) // 6 - (self.Jy.shape[2] - 1) * (self.Jy.shape[2]) * (2 * self.Jy.shape[2] - 1) // 6 + (self.Jy.shape[2] - 1)**2 + Q_N_dim**2)
         R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0] + self.Jmesh.shape[0], self.n_dim + self.Jmesh.shape[0]))
         R_bc = R_bc.at[:self.n_dim, :self.n_dim].set(self.Jbc_left)
@@ -876,34 +876,25 @@ class BVPMMJac_1:
     @jax.jit
     def right_multiply_diag(self, D):
 
-        Dy = D[self.n_par:self.n_par - self.Jk.shape[2]]
-        Dy = permute_q_mesh(Dy, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)
-        Dk = np.concatenate([D[:self.n_par], D[self.n_par - self.Jk.shape[2]:]])
+        Dy = D[self.n_par:]
+        Dy = permute_q_mesh_1(Dy, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)
+        Dk = D[:self.n_par]
+        Jbc = self.Jbc * Dy
 
-        Jy = self.Jy.at[0, :, :self.n_dim].multiply(Dy[:self.n_dim])
-        Jy = Jy.at[0, :, self.n_dim + 1:].multiply(Dy[self.n_dim:Jy.shape[2] - 1])
-        Jy = Jy.at[-1, :, :-1].multiply(Dy[-Jy.shape[2] + 1:])
+        def loop_body(i, Jy_i):
+            Dy_i = jax.lax.dynamic_slice(Dy, (i * (1 + Jy_i.shape[0]),), (Jy_i.shape[1],))
+            return i + 1, Jy_i * Dy_i
 
-        Jmesh = self.Jmesh * Dy
-
-        def loop_body(carry, _):
-            i, Jy = carry
-            Dyi = jax.lax.dynamic_slice(Dy, (i * (1 + Jy.shape[1]) - 1,), (Jy.shape[2],))
-            Jy = Jy.at[i].multiply(Dyi)
-            return (i + 1, Jy), _
-
-        Jy = jax.lax.scan(loop_body, init=(1, Jy), xs=None, length=self.Jy.shape[0] - 2)[0][1]
+        Jy = jax.lax.scan(loop_body, init=0, xs=self.Jy)[1]
         Jk = np.reshape(np.vstack(self.Jk) * Dk, (self.Jk.shape))
-        Jbc_left = self.Jbc_left * Dy[:self.n_dim]
-        Jbc_right = self.Jbc_right * Dy[-self.n_dim:]
         
-        return BVPMMJac(Jy, Jk, Jmesh, self.n_dim, self.n_par, Jbc_left, Jbc_right)
+        return BVPMMJac_1(Jy, Jk, Jbc, self.n_dim, self.n_par, self.colloc_points_unshifted)
 
     @jax.jit
     def lq_factor(self):
 
         R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))
-        Q_N_dim = self.Jy.shape[2] + self.Jmesh.shape[0] - 2
+        Q_N_dim = self.Jy.shape[2] + self.Jy.shape[0] - 1
         Q_c = np.zeros(Q_N_dim * (Q_N_dim + 1) * (2 * Q_N_dim + 1) // 6 - (self.Jy.shape[2] - 1) * (self.Jy.shape[2]) * (2 * self.Jy.shape[2] - 1) // 6 + (self.Jy.shape[2] - 1)**2 + Q_N_dim**2)
         R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0] + self.Jmesh.shape[0], self.n_dim + self.Jmesh.shape[0]))
         R_bc = R_bc.at[:self.n_dim, :self.n_dim].set(self.Jbc_left)
@@ -950,8 +941,126 @@ class BVPMMJac_1:
     def _tree_unflatten(cls, aux_data, children):
         return cls(*children[:3], colloc_points_unshifted=children[3], **aux_data)
 
+class BVPMMJac_LQ_1:
+
+    def __init__(self, Qc, Qbc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
+
+        self.Q_c = Q_c
+        self.Q_bc = Q_bc
+        self.R_c = R_c
+        self.R_bc = R_bc
+        self.n_dim = n_dim
+        self.n_par = n_par
+        self.colloc_points_unshifted = colloc_points_unshifted
+
+    @jax.jit
+    def solve_triangular_L(self, b):
+
+        is_vector = len(b.shape) == 1
+        if is_vector:
+            b = np.expand_dims(b, 1)
+
+        x = np.zeros((self.R_bc.shape[0], b.shape[1]))
+        x_i = jax.scipy.linalg.solve_triangular(self.R_c[0, self.R_c.shape[2]:].T, b[:self.R_c.shape[2]], lower=True)
+        x = x.at[:self.R_c.shape[1] // 2].set(x_i)
+
+        def loop_body(carry, _):
+
+            i, x = carry
+            x_i_prev = jax.lax.dynamic_slice(x, ((i - 1) * self.R_c.shape[2], 0), (self.R_c.shape[2], x.shape[1]))
+            b_i = jax.lax.dynamic_slice(b, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], b.shape[1]))
+            x_i = jax.scipy.linalg.solve_triangular(self.R_c[i, self.R_c.shape[2]:].T, b_i - self.R_c[i, :self.R_c.shape[2]].T@x_i_prev, lower=True)
+            x = jax.lax.dynamic_update_slice(x, x_i, (i * self.R_c.shape[2], 0))
+            return (i + 1, x), _
+
+        x = jax.lax.scan(loop_body, init=(1, x), xs=None, length=self.R_c.shape[0] - 1)[0][1]
+        xi = jax.scipy.linalg.solve_triangular(self.R_bc[-self.R_bc.shape[1]:].T, b[-self.R_bc.shape[1]:] - self.R_bc[:-self.R_bc.shape[1]].T@x[:-self.R_bc.shape[1]], lower=True)
+        x = x.at[-self.R_bc.shape[1]:].set(xi)
+
+        if is_vector:
+            x = x.ravel()
+
+        return x
+
+    @jax.jit
+    def solve_triangular_R(self, b):
+
+        is_vector = len(b.shape) == 1
+        if is_vector:
+            b = np.expand_dims(b, 1)
+
+        x = np.zeros((self.R_bc.shape[0], b.shape[1]))
+        x_i = jax.scipy.linalg.solve_triangular(self.R_bc[-self.R_bc.shape[1]:], b[-self.R_bc.shape[1]:], lower=False)
+        x = x.at[-self.R_bc.shape[1]:].set(x_i)
+        x_i = jax.scipy.linalg.solve_triangular(self.R_c[-1, self.R_c.shape[2]:], b[-self.R_c.shape[2] - self.R_bc.shape[1]:-self.R_bc.shape[1]] - self.R_bc[-self.R_c.shape[2] - self.R_bc.shape[1]:-self.R_bc.shape[1]]@x[-self.R_bc.shape[1]:], lower=False)
+        x = x.at[-self.R_c.shape[2] - self.R_bc.shape[1]:-self.R_bc.shape[1]].set(x_i)
+
+        def loop_body(carry, _):
+
+            i, x = carry
+            x_i_prev = jax.lax.dynamic_slice(x, ((i + 1) * self.R_c.shape[2], 0), (self.R_c.shape[2], x.shape[1]))
+            b_i = jax.lax.dynamic_slice(b, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], b.shape[1]))
+            self.R_bc_i = jax.lax.dynamic_slice(self.R_bc, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], self.R_bc.shape[1]))
+            b_i -= self.R_c[i + 1, :self.R_c.shape[2]]@x_i_prev + self.R_bc_i@x[-self.R_bc.shape[1]:]
+            x_i = jax.scipy.linalg.solve_triangular(self.R_c[i, self.R_c.shape[2]:], b_i, lower=False)
+            x = jax.lax.dynamic_update_slice(x, x_i, (i * self.R_c.shape[2], 0))
+            return (i - 1, x), _
+
+        x = jax.lax.scan(loop_body, init=(self.R_c.shape[0] - 2, x), xs=None, length=self.R_c.shape[0] - 1)[0][1]
+
+        if is_vector:
+            x = x.ravel()
+
+        return x
+
+    @jax.jit
+    def Q_right_multiply(self, v):
+
+        is_vector = len(v.shape) == 1
+        if is_vector:
+            v = np.expand_dims(v, 1)
+
+        v = v.at[-self.Q_bc.shape[0]:].set(self.Q_bc@v[-self.Q_bc.shape[0]:])
+        start = (self.R_c.shape[0] - 1) * self.R_c.shape[2]
+        stop = start + (self.R_c.shape[2] + self.n_dim + 1) + (self.R_c.shape[0] - 1) - 1
+        Q_N_dim = (self.R_c.shape[0] - 2) + (self.R_c.shape[2] + self.n_dim + 1)
+        Q_N = self.Q_c[-Q_N_dim**2:].reshape((Q_N_dim, Q_N_dim))
+        Q_c_index = Q_N_dim**2
+        v = v.at[start:stop].set(Q_N@v[start:stop])
+
+        for i in range(self.R_c.shape[0] - 2, 0, -1):
+
+            start = i * self.R_c.shape[2]
+            stop = start + (self.R_c.shape[2] + self.n_dim + 2) + (i - 1)
+            Q_i_dim = (i - 1) + (self.R_c.shape[2] + self.n_dim + 2)
+            Q_i = self.Q_c[-Q_c_index - Q_i_dim**2:-Q_c_index].reshape((Q_i_dim, Q_i_dim))
+            Q_c_index = Q_c_index + Q_i_dim**2
+            v = v.at[start:stop].set(Q_i@v[start:stop])
+
+        stop = self.R_c.shape[2] + self.n_dim + 1
+        Q_0_dim = self.R_c.shape[2] + self.n_dim + 1
+        Q_0 = self.Q_c[-Q_c_index - Q_0_dim**2:-Q_c_index].reshape((Q_0_dim, Q_0_dim))
+        v = v.at[:stop].set(Q_0@v[:stop])
+
+        v = unpermute_q_mesh(v.T, self.n_dim, self.R_c.shape[0], self.colloc_points_unshifted).T
+
+        if is_vector:
+            v = v.ravel()
+
+        return v
+
+    def _tree_flatten(self):
+        children = (self.Qc, self.Qbc, self.Rc, self.Rbc, self.colloc_points_unshifted)
+        aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children[:4], **aux_data, colloc_points_unshifted=children[4])
+
 jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPMMJac, BVPMMJac._tree_flatten, BVPMMJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPMMJac_1, BVPMMJac_1._tree_flatten, BVPMMJac_1._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPMMJac_LQ, BVPMMJac_LQ._tree_flatten, BVPMMJac_LQ._tree_unflatten)
+jax.tree_util.register_pytree_node(BVPMMJac_LQ_1, BVPMMJac_LQ_1._tree_flatten, BVPMMJac_LQ_1._tree_unflatten)
