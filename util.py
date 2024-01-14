@@ -218,7 +218,7 @@ def Q_multiply_from_reflectors(h, tau, v, transpose=False):
         A = jax.lax.cond(t != 0, lambda:A - t * np.outer(u, u@A), lambda:A)
         return A, None 
         
-    return jax.lax.scan(loop_body, init=v, xs=(np.triu(h).at[np.diag_indices(h.shape[0])].set(1), tau), reverse=transpose)[0]
+    return jax.lax.scan(loop_body, init=v, xs=(np.triu(h).at[np.diag_indices(h.shape[0])].set(1), tau), reverse=not transpose)[0]
 
 class BVPJac:
 
@@ -452,8 +452,8 @@ class BVPJac_LQ:
             i, x = carry
             x_i_prev = jax.lax.dynamic_slice(x, ((i + 1) * self.R_c.shape[2], 0), (self.R_c.shape[2], x.shape[1]))
             b_i = jax.lax.dynamic_slice(b, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], b.shape[1]))
-            self.R_bc_i = jax.lax.dynamic_slice(self.R_bc, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], self.R_bc.shape[1]))
-            b_i -= self.R_c[i + 1, :self.R_c.shape[2]]@x_i_prev + self.R_bc_i@x[-self.R_bc.shape[1]:]
+            R_bc_i = jax.lax.dynamic_slice(self.R_bc, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], self.R_bc.shape[1]))
+            b_i -= self.R_c[i + 1, :self.R_c.shape[2]]@x_i_prev + R_bc_i@x[-self.R_bc.shape[1]:]
             x_i = jax.scipy.linalg.solve_triangular(self.R_c[i, self.R_c.shape[2]:], b_i, lower=False)
             x = jax.lax.dynamic_update_slice(x, x_i, (i * self.R_c.shape[2], 0))
             return (i - 1, x), _
@@ -756,8 +756,8 @@ class BVPMMJac_LQ:
             i, x = carry
             x_i_prev = jax.lax.dynamic_slice(x, ((i + 1) * self.R_c.shape[2], 0), (self.R_c.shape[2], x.shape[1]))
             b_i = jax.lax.dynamic_slice(b, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], b.shape[1]))
-            self.R_bc_i = jax.lax.dynamic_slice(self.R_bc, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], self.R_bc.shape[1]))
-            b_i -= self.R_c[i + 1, :self.R_c.shape[2]]@x_i_prev + self.R_bc_i@x[-self.R_bc.shape[1]:]
+            R_bc_i = jax.lax.dynamic_slice(self.R_bc, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], self.R_bc.shape[1]))
+            b_i -= self.R_c[i + 1, :self.R_c.shape[2]]@x_i_prev + R_bc_i@x[-self.R_bc.shape[1]:]
             x_i = jax.scipy.linalg.solve_triangular(self.R_c[i, self.R_c.shape[2]:], b_i, lower=False)
             x = jax.lax.dynamic_update_slice(x, x_i, (i * self.R_c.shape[2], 0))
             return (i - 1, x), _
@@ -922,14 +922,14 @@ class BVPMMJac_1:
             i, h_prev, tau_prev, Rbc = carry
 
             Jy_i = np.roll(Jy_i, i + Jy_i.shape[0], axis=1).T
-            Jy_i = Jy_i.at[:-Jy_i.shape[1]].set(Q_multiply_from_reflectors(h_prev, tau_prev, Jy_i[:-Jy_i.shape[1]], transpose=False))
+            Jy_i = Jy_i.at[:-Jy_i.shape[1]].set(Q_multiply_from_reflectors(h_prev, tau_prev, Jy_i[:-Jy_i.shape[1]], transpose=True))
 
             h, tau = np.linalg.qr(Jy_i[Jy_i.shape[1]:], mode="raw")
 
             Rbc_i = jax.lax.dynamic_slice(Rbc, (i * Jy_i.shape[1], 0), (Jy_i.shape[0] - Jy_i.shape[1], Rbc.shape[1]))
-            Rbc = jax.lax.dynamic_update_slice(Rbc, Q_multiply_from_reflectors(h, tau, Rbc_i, transpose=False), ((i * Jy_i.shape[1], 0)))
+            Rbc = jax.lax.dynamic_update_slice(Rbc, Q_multiply_from_reflectors(h, tau, Rbc_i, transpose=True), ((i * Jy_i.shape[1], 0)))
 
-            Rc_i = Q_multiply_from_reflectors(h, tau, Jy_i[Jy_i.shape[1]:], transpose=False)
+            Rc_i = Q_multiply_from_reflectors(h, tau, Jy_i[Jy_i.shape[1]:], transpose=True)
             Rc_i = Jy_i.at[Jy_i.shape[1]:2 * Jy_i.shape[1]].set(np.triu(Rc_i[:Jy_i.shape[1]]))
 
             return (i + 1, h, tau, Rbc), (h, tau, Rc_i[:2 * Jy_i.shape[1]])
@@ -1000,24 +1000,25 @@ class BVPMMJac_LQ_1:
         if is_vector:
             b = np.expand_dims(b, 1)
 
-        x = np.zeros((self.R_bc.shape[0], b.shape[1]))
-        x_i = jax.scipy.linalg.solve_triangular(self.R_bc[-self.R_bc.shape[1]:], b[-self.R_bc.shape[1]:], lower=False)
-        x = x.at[-self.R_bc.shape[1]:].set(x_i)
-        x_i = jax.scipy.linalg.solve_triangular(self.R_c[-1, self.R_c.shape[2]:], b[-self.R_c.shape[2] - self.R_bc.shape[1]:-self.R_bc.shape[1]] - self.R_bc[-self.R_c.shape[2] - self.R_bc.shape[1]:-self.R_bc.shape[1]]@x[-self.R_bc.shape[1]:], lower=False)
-        x = x.at[-self.R_c.shape[2] - self.R_bc.shape[1]:-self.R_bc.shape[1]].set(x_i)
+        x = np.zeros((self.Rbc.shape[0], b.shape[1]))
+        x_i = jax.scipy.linalg.solve_triangular(self.Rbc[-self.Rbc.shape[1]:], b[-self.Rbc.shape[1]:], lower=False)
+        x = x.at[-self.Rbc.shape[1]:].set(x_i)
+        b_i = b[-self.Rc.shape[2] - self.Rbc.shape[1]:-self.Rbc.shape[1]] - self.Rbc[-self.Rc.shape[2] - self.Rbc.shape[1]:-self.Rbc.shape[1]]@x[-self.Rbc.shape[1]:]
+        x_i = jax.scipy.linalg.solve_triangular(self.Rc[-1, self.Rc.shape[2]:], b_i, lower=False)
+        x = x.at[-self.Rc.shape[2] - self.Rbc.shape[1]:-self.Rbc.shape[1]].set(x_i)
 
         def loop_body(carry, _):
 
             i, x = carry
-            x_i_prev = jax.lax.dynamic_slice(x, ((i + 1) * self.R_c.shape[2], 0), (self.R_c.shape[2], x.shape[1]))
-            b_i = jax.lax.dynamic_slice(b, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], b.shape[1]))
-            self.R_bc_i = jax.lax.dynamic_slice(self.R_bc, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], self.R_bc.shape[1]))
-            b_i -= self.R_c[i + 1, :self.R_c.shape[2]]@x_i_prev + self.R_bc_i@x[-self.R_bc.shape[1]:]
-            x_i = jax.scipy.linalg.solve_triangular(self.R_c[i, self.R_c.shape[2]:], b_i, lower=False)
-            x = jax.lax.dynamic_update_slice(x, x_i, (i * self.R_c.shape[2], 0))
+            x_i_prev = jax.lax.dynamic_slice(x, ((i + 1) * self.Rc.shape[2], 0), (self.Rc.shape[2], x.shape[1]))
+            b_i = jax.lax.dynamic_slice(b, (i * self.Rc.shape[2], 0), (self.Rc.shape[2], b.shape[1]))
+            Rbc_i = jax.lax.dynamic_slice(self.Rbc, (i * self.Rc.shape[2], 0), (self.Rc.shape[2], self.Rbc.shape[1]))
+            b_i -= self.Rc[i + 1, :self.Rc.shape[2]]@x_i_prev + Rbc_i@x[-self.Rbc.shape[1]:]
+            x_i = jax.scipy.linalg.solve_triangular(self.Rc[i, self.Rc.shape[2]:], b_i, lower=False)
+            x = jax.lax.dynamic_update_slice(x, x_i, (i * self.Rc.shape[2], 0))
             return (i - 1, x), _
 
-        x = jax.lax.scan(loop_body, init=(self.R_c.shape[0] - 2, x), xs=None, length=self.R_c.shape[0] - 1)[0][1]
+        x = jax.lax.scan(loop_body, init=(self.Rc.shape[0] - 2, x), xs=None, length=self.Rc.shape[0] - 1)[0][1]
 
         if is_vector:
             x = x.ravel()
@@ -1031,29 +1032,19 @@ class BVPMMJac_LQ_1:
         if is_vector:
             v = np.expand_dims(v, 1)
 
-        v = v.at[-self.Q_bc.shape[0]:].set(self.Q_bc@v[-self.Q_bc.shape[0]:])
-        start = (self.R_c.shape[0] - 1) * self.R_c.shape[2]
-        stop = start + (self.R_c.shape[2] + self.n_dim + 1) + (self.R_c.shape[0] - 1) - 1
-        Q_N_dim = (self.R_c.shape[0] - 2) + (self.R_c.shape[2] + self.n_dim + 1)
-        Q_N = self.Q_c[-Q_N_dim**2:].reshape((Q_N_dim, Q_N_dim))
-        Q_c_index = Q_N_dim**2
-        v = v.at[start:stop].set(Q_N@v[start:stop])
+        pad_width = self.Rc.shape[0] + self.n_dim - self.Rbc.shape[1]
+        v = np.pad(v, ((0, pad_width), (0, 0)))
+        v = v.at[-self.Qbc.shape[0]:].set(self.Qbc@v[-self.Qbc.shape[1] - pad_width:-pad_width])
 
-        for i in range(self.R_c.shape[0] - 2, 0, -1):
+        def loop_body(carry, _):
+            i, v = carry
+            v_i = jax.lax.dynamic_slice(v, (i * self.Rc.shape[2], 0), (self.h_c.shape[2], v.shape[1]))
+            v_i = Q_multiply_from_reflectors(self.h_c[i], self.tau_c[i], v_i, transpose=False)
+            v = jax.lax.dynamic_update_slice(v, v_i, (i * self.Rc.shape[2], 0))
+            return (i - 1, v), _
 
-            start = i * self.R_c.shape[2]
-            stop = start + (self.R_c.shape[2] + self.n_dim + 2) + (i - 1)
-            Q_i_dim = (i - 1) + (self.R_c.shape[2] + self.n_dim + 2)
-            Q_i = self.Q_c[-Q_c_index - Q_i_dim**2:-Q_c_index].reshape((Q_i_dim, Q_i_dim))
-            Q_c_index = Q_c_index + Q_i_dim**2
-            v = v.at[start:stop].set(Q_i@v[start:stop])
-
-        stop = self.R_c.shape[2] + self.n_dim + 1
-        Q_0_dim = self.R_c.shape[2] + self.n_dim + 1
-        Q_0 = self.Q_c[-Q_c_index - Q_0_dim**2:-Q_c_index].reshape((Q_0_dim, Q_0_dim))
-        v = v.at[:stop].set(Q_0@v[:stop])
-
-        v = unpermute_q_mesh(v.T, self.n_dim, self.R_c.shape[0], self.colloc_points_unshifted).T
+        v = jax.lax.scan(loop_body, init=(self.h_c.shape[0] - 1, v), xs=None, length=self.h_c.shape[0])[0][1]
+        v = unpermute_q_mesh_1(v.T, self.n_dim, self.Rc.shape[0], self.colloc_points_unshifted).T
 
         if is_vector:
             v = v.ravel()
