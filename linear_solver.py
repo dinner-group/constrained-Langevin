@@ -85,7 +85,7 @@ def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
     out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w, lower=False)
     u = w - E@out_k
     out_y = J_LQ.Q_right_multiply(u)
-    out = np.concatenate([out_k[:J.n_par], out_y, out_k[-J.Jk.shape[2] + J.n_par:]])
+    out = np.concatenate([out_k[:J.n_par], out_y, out_k[J.n_par:]])
 
     if sqrtMinv is not None:
         if len(sqrtMinv.shape) == 1:
