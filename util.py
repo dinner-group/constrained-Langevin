@@ -940,7 +940,7 @@ class BVPMMJac_1:
         Qbc, Rbc_i = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:])
         Rbc = Rbc.at[-self.Jy.shape[0] - self.n_dim:-self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
 
-        return h, tau, Qbc, Rc, Rbc
+        return BVPMMJac_LQ_1(h, tau, Qbc, Rc, Rbc, self.n_dim, self.n_par, self.colloc_points_unshifted)
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jbc, self.colloc_points_unshifted)
@@ -953,10 +953,11 @@ class BVPMMJac_1:
 
 class BVPMMJac_LQ_1:
 
-    def __init__(self, h_c, tau_c, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
+    def __init__(self, h_c, tau_c, Qbc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
 
         self.h_c = h_c
         self.tau_c = tau_c
+        self.Qbc = Qbc
         self.Rc = Rc
         self.Rbc = Rbc
         self.n_dim = n_dim
