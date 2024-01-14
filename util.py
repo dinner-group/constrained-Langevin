@@ -940,7 +940,7 @@ class BVPMMJac_1:
         Qbc, Rbc_i = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:])
         Rbc = Rbc.at[-self.Jy.shape[0] - self.n_dim:-self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
 
-        return BVPMMJac_LQ_1(h, tau, Qbc, Rc, Rbc, self.n_dim, self.n_par, self.colloc_points_unshifted)
+        return BVPMMJac_LQ_1(h, tau, Qbc, Rc, Rbc[:-self.Jy.shape[0] - self.n_dim + Rbc.shape[1]], self.n_dim, self.n_par, self.colloc_points_unshifted)
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jbc, self.colloc_points_unshifted)
@@ -971,22 +971,22 @@ class BVPMMJac_LQ_1:
         if is_vector:
             b = np.expand_dims(b, 1)
 
-        x = np.zeros((self.R_bc.shape[0], b.shape[1]))
-        x_i = jax.scipy.linalg.solve_triangular(self.R_c[0, self.R_c.shape[2]:].T, b[:self.R_c.shape[2]], lower=True)
-        x = x.at[:self.R_c.shape[1] // 2].set(x_i)
+        x = np.zeros((self.Rbc.shape[0], b.shape[1]))
+        x_i = jax.scipy.linalg.solve_triangular(self.Rc[0, self.Rc.shape[2]:].T, b[:self.Rc.shape[2]], lower=True)
+        x = x.at[:self.Rc.shape[2]].set(x_i)
 
         def loop_body(carry, _):
 
             i, x = carry
-            x_i_prev = jax.lax.dynamic_slice(x, ((i - 1) * self.R_c.shape[2], 0), (self.R_c.shape[2], x.shape[1]))
-            b_i = jax.lax.dynamic_slice(b, (i * self.R_c.shape[2], 0), (self.R_c.shape[2], b.shape[1]))
-            x_i = jax.scipy.linalg.solve_triangular(self.R_c[i, self.R_c.shape[2]:].T, b_i - self.R_c[i, :self.R_c.shape[2]].T@x_i_prev, lower=True)
-            x = jax.lax.dynamic_update_slice(x, x_i, (i * self.R_c.shape[2], 0))
+            x_i_prev = jax.lax.dynamic_slice(x, ((i - 1) * self.Rc.shape[2], 0), (self.Rc.shape[2], x.shape[1]))
+            b_i = jax.lax.dynamic_slice(b, (i * self.Rc.shape[2], 0), (self.Rc.shape[2], b.shape[1]))
+            x_i = jax.scipy.linalg.solve_triangular(self.Rc[i, self.Rc.shape[2]:].T, b_i - self.Rc[i, :self.Rc.shape[2]].T@x_i_prev, lower=True)
+            x = jax.lax.dynamic_update_slice(x, x_i, (i * self.Rc.shape[2], 0))
             return (i + 1, x), _
 
-        x = jax.lax.scan(loop_body, init=(1, x), xs=None, length=self.R_c.shape[0] - 1)[0][1]
-        xi = jax.scipy.linalg.solve_triangular(self.R_bc[-self.R_bc.shape[1]:].T, b[-self.R_bc.shape[1]:] - self.R_bc[:-self.R_bc.shape[1]].T@x[:-self.R_bc.shape[1]], lower=True)
-        x = x.at[-self.R_bc.shape[1]:].set(xi)
+        x = jax.lax.scan(loop_body, init=(1, x), xs=None, length=self.Rc.shape[0] - 1)[0][1]
+        x_i = jax.scipy.linalg.solve_triangular(self.Rbc[-self.Rbc.shape[1]:].T, b[-self.Rbc.shape[1]:] - self.Rbc[:-self.Rbc.shape[1]].T@x[:-self.Rbc.shape[1]], lower=True)
+        x = x.at[-self.Rbc.shape[1]:].set(x_i)
 
         if is_vector:
             x = x.ravel()
@@ -1061,13 +1061,13 @@ class BVPMMJac_LQ_1:
         return v
 
     def _tree_flatten(self):
-        children = (self.Qc, self.Qbc, self.Rc, self.Rbc, self.colloc_points_unshifted)
+        children = (self.h_c, self.tau_c, self.Qbc, self.Rc, self.Rbc, self.colloc_points_unshifted)
         aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
         return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
-        return cls(*children[:4], **aux_data, colloc_points_unshifted=children[4])
+        return cls(*children[:5], **aux_data, colloc_points_unshifted=children[5])
 
 jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
