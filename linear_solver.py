@@ -78,7 +78,7 @@ def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
     if J_LQ is None:
         J_LQ = J.lq_factor()
     if Jk_factor is None:
-        Jk_factor = factor_bvpjac(J, J_LQ)
+        Jk_factor = factor_bvpjac_k(J, J_LQ)
 
     E, Q_k, R_k = Jk_factor
     w = J_LQ.solve_triangular_L(b)
