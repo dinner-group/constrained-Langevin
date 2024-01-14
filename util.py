@@ -199,7 +199,7 @@ def unpermute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss
 
     return x
 
-@partial(jax.jit, static_argnames="right")
+@partial(jax.jit, static_argnames="transpose")
 def Q_multiply_from_reflectors(h, tau, v, transpose=False):
 
     is_vector = len(v.shape) == 1
