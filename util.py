@@ -199,6 +199,27 @@ def unpermute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss
 
     return x
 
+@partial(jax.jit, static_argnames="right")
+def Q_multiply_from_reflectors(h, tau, v, transpose=False):
+
+    is_vector = len(v.shape) == 1
+    
+    if is_vector:
+        if right:
+            v = np.expand_dims(v, 1)
+        else:
+            v = np.expand_dims(v, 0)
+
+    if(h.shape[0] > h.shape[1]):
+        h = h[:h.shape[1]]
+            
+    def loop_body(A, x):
+        u, t = x
+        A = jax.lax.cond(t != 0, lambda:A - t * np.outer(u, u@A), lambda:A)
+        return A, None 
+        
+    return jax.lax.scan(loop_body, init=v, xs=(np.triu(h).at[np.diag_indices(h.shape[0])].set(1), tau), reverse=transpose)[0]
+
 class BVPJac:
 
     def __init__(self, Jy, Jk, n_dim, n_par, Jbc_left=None, Jbc_right=None):
@@ -893,44 +914,33 @@ class BVPMMJac_1:
     @jax.jit
     def lq_factor(self):
 
-        R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))
-        Q_N_dim = self.Jy.shape[2] + self.Jy.shape[0] - 1
-        Q_c = np.zeros(Q_N_dim * (Q_N_dim + 1) * (2 * Q_N_dim + 1) // 6 - (self.Jy.shape[2] - 1) * (self.Jy.shape[2]) * (2 * self.Jy.shape[2] - 1) // 6 + (self.Jy.shape[2] - 1)**2 + Q_N_dim**2)
-        R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0] + self.Jmesh.shape[0], self.n_dim + self.Jmesh.shape[0]))
-        R_bc = R_bc.at[:self.n_dim, :self.n_dim].set(self.Jbc_left)
-        R_bc = R_bc.at[-self.n_dim:, :self.n_dim].set(self.Jbc_right)
-        R_bc = R_bc.at[:, self.n_dim:self.n_dim + self.Jmesh.shape[0]].set(self.Jmesh.T)
+        Jy = self.Jy
+        Jy = np.pad(Jy, ((0, 0), (0, 0), (0, Jy.shape[1] + Jy.shape[0] - 1)))
 
-        Jy_0 = np.hstack([self.Jy[0, :, :self.n_dim], self.Jy[0, :, self.n_dim + 1:]])
-        Q, R_0 = jax.scipy.linalg.qr(Jy_0.T)
-        Q_c = Q_c.at[:Q.size].set(Q.ravel())
-        Q_c_index = Q.size
-        R_c = R_c.at[0, -R_0.shape[1]:].set(R_0[:R_0.shape[1]])
-        R_bc = R_bc.at[:Q.shape[0]].set(Q.T@R_bc[:Q.shape[0]])
+        def loop_body(carry, Jy_i):
 
-        for i in range(1, self.Jy.shape[0] - 1):
+            i, h_prev, tau_prev, Rbc = carry
 
-            s_i = Q[-self.n_dim - 1:].T@self.Jy[i, :, :self.n_dim + 1].T
-            R_c = R_c.at[i, :s_i.shape[1]].set(s_i[:s_i.shape[1]])
-            Q, R_i = jax.scipy.linalg.qr(np.vstack([s_i[-self.n_dim - i:], self.Jy[i, :, self.n_dim + 1:].T]))
-            Q_c = Q_c.at[Q_c_index:Q_c_index + Q.size].set(Q.ravel())
-            Q_c_index += Q.size
-            R_c = R_c.at[i, -R_i.shape[1]:].set(R_i[:R_i.shape[1]])
-            bc = R_bc[i * self.Jy.shape[1]:i * self.Jy.shape[1] + self.Jy.shape[2] + i - 1]
-            R_bc = R_bc.at[i * self.Jy.shape[1]:i * self.Jy.shape[1] + self.Jy.shape[2] + i - 1].set(Q.T@bc)
+            Jy_i = np.roll(Jy_i, i + Jy_i.shape[0], axis=1).T
+            Jy_i = Jy_i.at[:-Jy_i.shape[1]].set(Q_multiply_from_reflectors(h_prev, tau_prev, Jy_i[:-Jy_i.shape[1]], transpose=False))
 
-        Jy_N = self.Jy[-1, :, :-1]
-        s_N = Q[-self.n_dim - 1:].T@Jy_N[:, :self.n_dim + 1].T
-        R_c = R_c.at[-1, :s_N.shape[1]].set(s_N[:s_N.shape[1]])
-        Q, R_N = jax.scipy.linalg.qr(np.vstack([s_N[-self.n_dim - self.Jmesh.shape[0]:], Jy_N[:, self.n_dim + 1:].T]))
-        Q_c = Q_c.at[Q_c_index:Q_c_index + Q.size].set(Q.ravel())
-        R_c = R_c.at[-1, -R_N.shape[1]:].set(R_N[:R_N.shape[1]])
-        bc = R_bc[(self.Jy.shape[0] - 1) * Jy_N.shape[0]:(self.Jy.shape[0] - 1) * Jy_N.shape[0] + Jy_N.shape[1] + self.Jy.shape[0] - 2]
-        R_bc = R_bc.at[(self.Jy.shape[0] - 1) * Jy_N.shape[0]:(self.Jy.shape[0] - 1) * Jy_N.shape[0] + Jy_N.shape[1] + self.Jy.shape[0] - 2].set(Q.T@bc)
-        Q_bc, R_bc_N = np.linalg.qr(R_bc[-self.Jmesh.shape[0] - self.n_dim:])
-        R_bc = R_bc.at[-self.Jmesh.shape[0] - self.n_dim:].set(R_bc_N)
+            h, tau = np.linalg.qr(Jy_i[Jy_i.shape[1]:], mode="raw")
 
-        return BVPMMJac_LQ(Q_c, Q_bc, R_c, R_bc, self.n_dim, self.n_par, self.colloc_points_unshifted)
+            Rbc_i = jax.lax.dynamic_slice(Rbc, (i * Jy_i.shape[1], 0), (Jy_i.shape[0] - Jy_i.shape[1], Rbc.shape[1]))
+            Rbc = jax.lax.dynamic_update_slice(Rbc, Q_multiply_from_reflectors(h, tau, Rbc_i, transpose=False), ((i * Jy_i.shape[1], 0)))
+
+            Rc_i = Q_multiply_from_reflectors(h, tau, Jy_i[Jy_i.shape[1]:], transpose=False)
+            Rc_i = Jy_i.at[Jy_i.shape[1]:2 * Jy_i.shape[1]].set(np.triu(Rc_i[:Jy_i.shape[1]]))
+
+            return (i + 1, h, tau, Rbc), (h, tau, Rc_i[:2 * Jy_i.shape[1]])
+
+        out = jax.lax.scan(loop_body, init=(0, np.zeros((Jy.shape[1], Jy.shape[2] - Jy.shape[1])), np.zeros(Jy.shape[1]), self.Jbc.T), xs=Jy)
+        Rbc = out[0][3]
+        h, tau, Rc = out[1]
+        Qbc, Rbc_i = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:])
+        Rbc = Rbc.at[-self.Jy.shape[0] - self.n_dim:-self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
+
+        return h, tau, Qbc, Rc, Rbc
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jbc, self.colloc_points_unshifted)
@@ -943,12 +953,12 @@ class BVPMMJac_1:
 
 class BVPMMJac_LQ_1:
 
-    def __init__(self, Qc, Qbc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
+    def __init__(self, h_c, tau_c, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
 
-        self.Q_c = Q_c
-        self.Q_bc = Q_bc
-        self.R_c = R_c
-        self.R_bc = R_bc
+        self.h_c = h_c
+        self.tau_c = tau_c
+        self.Rc = Rc
+        self.Rbc = Rbc
         self.n_dim = n_dim
         self.n_par = n_par
         self.colloc_points_unshifted = colloc_points_unshifted
