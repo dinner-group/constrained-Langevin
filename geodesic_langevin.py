@@ -285,7 +285,7 @@ def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_a
     out = out.at[0].set(vars_to_save_flatten)
     n_accept = accept
     init_val = (vars_to_save, vars_to_discard, n_accept, out)
-    n_accept, out = inference_potential(q0_lc_mm, ode_model=rp)[-2:]
+    n_accept, out = jax.lax.while_loop(1, n_steps, loop_body, init_val)[-2:]
 
     if print_acceptance:
         jax.debug.print("{}", n_accept / n_steps)
