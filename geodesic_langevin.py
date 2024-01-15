@@ -192,7 +192,7 @@ def rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_con
 
 @partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
 def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
-             nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
+             linsol=linear_solver.qr_lstsq_rattle, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
@@ -232,7 +232,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
 
 @partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
 def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
-             nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_lstsq_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
+             linsol=linear_solver.qr_lstsq_rattle, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
 
     if jac_constraint is None:
         jac_constraint = jax.jacfwd(constraint)
@@ -270,27 +270,24 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     return vars_to_save, vars_to_discard, accept
 
 @partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance", "n_mesh_intervals", "n_smooth"))
-def sample(dynamic_vars, dt, n_steps, thin, potential, stepper, *args, print_acceptance=False, **kwargs):
+def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_acceptance=False, **kwargs):
 
-    def cond(carry):
-        i, vars_to_save, vars_to_discard, n_accept, out = carry
-        return (i < n_steps) & np.all(np.isfinite(jax.flatten_util.ravel_pytree(vars_to_save)[0])) & np.all(np.isfinite(jax.flatten_util.ravel_pytree(vars_to_discard)[0]))
-
-    def loop_body(carry):
-        i, vars_to_save, vars_to_discard, n_accept, out = carry
+    def loop_body(i, carry):
+        vars_to_save, vars_to_discard, n_accept, out = carry
         vars_to_save, vars_to_discard, accept = stepper(*vars_to_save, *vars_to_discard, dt=dt, potential=potential, *args, **kwargs)
         vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
         out = jax.lax.dynamic_update_slice(out, np.expand_dims(vars_to_save_flatten, 0), (i // thin, 0))
-        return i + 1, vars_to_save, vars_to_discard, n_accept + accept, out
+        return vars_to_save, vars_to_discard, n_accept + accept, out
 
     vars_to_save, vars_to_discard, accept = stepper(*dynamic_vars, dt=dt, potential=potential, *args, **kwargs)
     vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
     out = np.full((n_steps // thin, vars_to_save_flatten.size), np.nan)
     out = out.at[0].set(vars_to_save_flatten)
     n_accept = accept
-    init = (1, vars_to_save, vars_to_discard, n_accept, out)
+    init_val = (vars_to_save, vars_to_discard, n_accept, out)
+    n_accept, out = inference_potential(q0_lc_mm, ode_model=rp)[-2:]
 
     if print_acceptance:
         jax.debug.print("{}", n_accept / n_steps)
 
-    return jax.lax.while_loop(cond, loop_body, init)[-1]
+    return out
