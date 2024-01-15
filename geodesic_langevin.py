@@ -269,7 +269,7 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
 
     return vars_to_save, vars_to_discard, accept
 
-@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance", "n_mesh_intervals", "n_smooth"))
+@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance", "n_mesh_intervals", "n_smooth", "phase_condition"))
 def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_acceptance=False, **kwargs):
 
     def loop_body(i, carry):
@@ -283,11 +283,11 @@ def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_a
     vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
     out = np.full((n_steps // thin, vars_to_save_flatten.size), np.nan)
     out = out.at[0].set(vars_to_save_flatten)
-    n_accept = accept
+    n_accept = 0 + accept
     init_val = (vars_to_save, vars_to_discard, n_accept, out)
     n_accept, out = jax.lax.fori_loop(1, n_steps, loop_body, init_val)[-2:]
 
     if print_acceptance:
-        jax.debug.print("{}", n_accept / n_steps)
+        jax.debug.print("Acceptance: {}", n_accept / n_steps)
 
     return out
