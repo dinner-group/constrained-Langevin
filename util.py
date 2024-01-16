@@ -596,6 +596,7 @@ class BVPMMJac:
         vy = permute_q_mesh(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]:]])
         out = np.pad(self.Jk@vk, ((0, self.Jy.shape[0] * (self.Jy.shape[1] + 1) - 1 + self.n_dim - self.Jk.shape[0]), (0, 0)))
+        out = out.at[-self.Jmesh.shape[0]:].add(self.Jmesh@vy)
         
         Jy_0 = np.hstack([self.Jy[0, :, :self.n_dim], self.Jy[0, :, self.n_dim + 1:]])
         out = out.at[:self.Jy.shape[1], :out.shape[1]].add(Jy_0@vy[:Jy_0.shape[1]])
