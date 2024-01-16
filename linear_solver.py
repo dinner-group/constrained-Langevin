@@ -82,7 +82,7 @@ def qr_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
     E, Q_k, R_k = Jk_factor
     w = J_LQ.solve_triangular_L(b)
-    out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w, lower=False)
+    out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.shape[0]:].T@w, lower=False)
     u = w - E@out_k
     out_y = J_LQ.Q_right_multiply(u)
     out = np.concatenate([out_k[:J.n_par], out_y, out_k[J.n_par:]])
@@ -223,6 +223,16 @@ def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=N
     JMinvb = np.concatenate([JsqrtMinv[i].right_multiply(np.concatenate([b[:J[0].n_par], b[row_indices_b[i]:row_indices_b[i + 1]]])) for i in range(len(J))])
     out = qr_lstsq_bvp_multi_eqn_shared_k(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     return b - out[0], out[1], J_and_factor 
+
+@jax.jit
+def low_rank_spd_factor(U):
+    
+    Q, R = np.linalg.qr(U)
+    T = (R@R.T).at[np.diag_indices(R.shape[0])].add(1)
+    L = np.linalg.cholesky(T)
+    X = L.at[np.diag_indices(L.shape[0])].add(-1)
+    
+    return Q, X
 
 class LinSolColloc():
 
