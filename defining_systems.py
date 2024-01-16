@@ -234,13 +234,15 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_
     Jmesh_m = jax.jacrev(bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points, ode_model, colloc_points_unshifted, n_smooth)[:, 1:-1]
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
     Jmesh = util.permute_q_mesh(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
+    Jy, Jk = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
+    Jk = np.vstack(Jk)
 
-    J = util.BVPMMJac(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], Jmesh, ode_model.n_dim, ode_model.n_par, colloc_points_unshifted=colloc_points_unshifted)
+    J = util.BVPMMJac(Jy, Jk, Jmesh, ode_model.n_dim, ode_model.n_par, colloc_points_unshifted=colloc_points_unshifted)
 
     return J
 
-@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
-def periodic_bvp_mm_colloc_resid_1(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60, n_smooth=4):
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth", "phase_condition"))
+def periodic_bvp_mm_colloc_resid_1(q, ode_model, colloc_points_unshifted=util.gauss_points, phase_condition=None, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -256,10 +258,15 @@ def periodic_bvp_mm_colloc_resid_1(q, ode_model, colloc_points_unshifted=util.ga
         return i + 1, r_i
 
     colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
-    return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
+    resid = np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
 
-@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
-def periodic_bvp_mm_colloc_jac_1(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60, n_smooth=4):
+    if phase_condition is not None:
+        resid = np.concatenate([resid, np.ravel(phase_condition(q, ode_model=ode_model, *args, **kwargs))])
+
+    return resid
+
+@partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth", "phase_condition"))
+def periodic_bvp_mm_colloc_jac_1(q, ode_model, colloc_points_unshifted=util.gauss_points, phase_condition=None, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -289,8 +296,18 @@ def periodic_bvp_mm_colloc_jac_1(q, ode_model, colloc_points_unshifted=util.gaus
     Jbc = np.pad(Jmesh, ((ode_model.n_dim, 0), (0, 0)))
     Jbc = Jbc.at[:ode_model.n_dim, :ode_model.n_dim].set(-np.identity(ode_model.n_dim))
     Jbc = Jbc.at[:ode_model.n_dim, -ode_model.n_dim:].set(np.identity(ode_model.n_dim))
+    Jy, Jk = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
+    Jk = np.vstack(Jk)
+    Jk = np.pad(Jk, ((0, Jy.shape[0] * (Jy.shape[1] + 1) - 1 + ode_model.n_dim - Jk.shape[0]), (0, 0)))
 
-    J = util.BVPMMJac_1(*jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1], Jbc, ode_model.n_dim, ode_model.n_par, colloc_points_unshifted=colloc_points_unshifted)
+    if phase_condition is not None:
+        Jpc = jax.jacrev(phase_condition)(q, ode_model=ode_model, *args, **kwargs)
+        if len(Jpc.shape) == 1:
+            Jpc = np.expand_dims(Jpc, 0)
+        Jk = np.vstack([Jk, Jpc[:, :ode_model.n_par]])
+        Jbc = np.vstack([Jbc, util.permute_q_mesh_1(Jpc[:, ode_model.n_par:], ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)])
+
+    J = util.BVPMMJac_1(Jy, Jk, Jbc, ode_model.n_dim, ode_model.n_par, colloc_points_unshifted=colloc_points_unshifted)
 
     return J
 

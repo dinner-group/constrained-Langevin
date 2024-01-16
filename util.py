@@ -227,7 +227,7 @@ class BVPJac:
         self.Jk = Jk
         self.n_dim = n_dim
         self.n_par = n_par
-        self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim, Jy.shape[0] * Jy.shape[1] + n_dim + Jk.shape[2]))
+        self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim, Jy.shape[0] * Jy.shape[1] + n_dim + Jk.shape[1]))
 
         if Jbc_left is None:
             self.Jbc_left = -np.identity(n_dim)
@@ -242,7 +242,7 @@ class BVPJac:
     @jax.jit
     def todense(self):
 
-        Jk = np.pad(np.vstack(self.Jk), ((0, self.n_dim), (0, 0)))
+        Jk = np.pad(self.Jk, ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
         Jy_dense = np.zeros((self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim, self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim))
         Jy_dense = Jy_dense.at[-self.n_dim:, :self.n_dim].set(self.Jbc_left)
         Jy_dense = Jy_dense.at[-self.n_dim:, -self.n_dim:].set(self.Jbc_right)
@@ -263,8 +263,8 @@ class BVPJac:
             v = np.expand_dims(v, 0)
 
         out = np.zeros((v.shape[0], self.shape[1]))
-        out = out.at[:, :self.n_par].set(v[:, :-self.n_dim]@np.vstack(self.Jk[:, :, :self.n_par]))
-        out = out.at[:, self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:].set(v[:, :-self.n_dim]@np.vstack(self.Jk[:, :, self.n_par:]))
+        out = out.at[:, :self.n_par].set(v[:, :-self.n_dim]@self.Jk[:, :self.n_par])
+        out = out.at[:, self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:].set(v[:, :-self.n_dim]@self.Jk[:, self.n_par:])
         out = out.at[:, self.n_par:self.n_par + self.n_dim].set(v[:, -self.n_dim:]@self.Jbc_left)
         out = out.at[:, self.n_par + self.Jy.shape[0] * self.Jy.shape[1]:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim].set(v[:, -self.n_dim:]@self.Jbc_right)
         
@@ -291,7 +291,7 @@ class BVPJac:
 
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:]])
-        out = np.pad(np.vstack(self.Jk)@vk, ((0, self.n_dim), (0, 0)))
+        out = np.pad(self.Jk@vk, ((0, self.Jy.shape[0] * (self.Jy.shape[1] + 1) - 1 + self.n_dim - self.Jk.shape[0]), (0, 0)))
 
         def loop_body(carry, _):
             i, out = carry
@@ -321,7 +321,7 @@ class BVPJac:
             return (i + 1, Jy), _
 
         Jy = jax.lax.scan(loop_body, init=(0, self.Jy), xs=None, length=self.Jy.shape[0])[0][1]
-        Jk = np.reshape(np.vstack(self.Jk) * Dk, (self.Jk.shape))
+        Jk = self.Jk * Dk
         Jbc_left = self.Jbc_left * D[self.n_par:self.n_par + self.n_dim]
         Jbc_right = self.Jbc_right * D[self.n_par + self.Jy.shape[0] * self.Jy.shape[1]:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
         
@@ -338,7 +338,7 @@ class BVPJac:
                              Jy1Jy2T, 
                              [np.pad(np.hstack([J1.Jy[-1, :, :J1.n_dim]@J2.Jy[-2, :, -J1.n_dim:].T, J1.Jy[-1]@J2.Jy[-1].T]), ((0, 0), (0, J1.Jy.shape[1])))]])
         
-        J1J2T = np.pad(np.vstack(J1.Jk)@np.vstack(J2.Jk).T, ((0, J1.n_dim), (0, J2.n_dim)))
+        J1J2T = np.pad(J1.Jk@J2.Jk.T, ((0, J1.n_dim), (0, J2.n_dim)))
         
         def loop2(carry, _):
             i, J1J2T = carry
@@ -504,7 +504,7 @@ class BVPMMJac:
         self.Jmesh = Jmesh
         self.n_dim = n_dim
         self.n_par = n_par
-        self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim + Jmesh.shape[0], Jy.shape[0] * Jy.shape[1] + n_dim + Jy.shape[0] - 1 + Jk.shape[2]))
+        self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim + Jmesh.shape[0], Jy.shape[0] * Jy.shape[1] + n_dim + Jy.shape[0] - 1 + Jk.shape[1]))
         self.colloc_points_unshifted = colloc_points_unshifted
 
         if Jbc_left is None:
@@ -521,7 +521,7 @@ class BVPMMJac:
     @jax.jit
     def todense(self):
 
-        Jk = np.pad(np.vstack(self.Jk), ((0, self.n_dim), (0, 0)))
+        Jk = np.pad(self.Jk, ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
         Jy_dense = np.zeros((self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim, self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim))
         Jm_dense = np.zeros((self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim, self.Jmesh.shape[0]))
 
@@ -545,8 +545,7 @@ class BVPMMJac:
             return (i + 1, Jy_dense, Jm_dense), _
 
         Jy_mesh_dense = np.hstack(jax.lax.scan(loop_body, init=(1, Jy_dense, Jm_dense), xs=None, length=self.Jy.shape[0] - 2)[0][1:])
-        return np.vstack([np.hstack([Jk[:, :self.n_par], Jy_mesh_dense, Jk[:, self.n_par:]]), np.pad(unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted), 
-                          ((0, 0), (self.n_par, self.Jk.shape[2] - self.n_par)))])
+        return np.hstack([Jk[:, :self.n_par], np.vstack([Jy_mesh_dense, unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)]), Jk[:, self.n_par:]])
 
     @jax.jit
     def left_multiply(self, v):
@@ -556,8 +555,8 @@ class BVPMMJac:
             v = np.expand_dims(v, 0)
 
         out = np.zeros((v.shape[0], self.shape[1]))
-        out = out.at[:, :self.n_par].add(v[:, :-self.n_dim - self.Jmesh.shape[0]]@np.vstack(self.Jk[:, :, :self.n_par]))
-        out = out.at[:, self.n_par - self.Jk.shape[2]:].add(v[:, :-self.n_dim - self.Jmesh.shape[0]]@np.vstack(self.Jk[:, :, self.n_par:]))
+        out = out.at[:, :self.n_par].add(v[:, :Jk.shape[0]]@self.Jk[:, :self.n_par])
+        out = out.at[:, self.n_par - self.Jk.shape[1]:].add(v[:, :Jk.shape[0]]@self.Jk[:, self.n_par:])
      
         out = out.at[:, self.n_par:self.n_par + self.Jmesh.shape[1]].add(v[:, -self.Jmesh.shape[0]:]@self.Jmesh)
      
@@ -569,7 +568,7 @@ class BVPMMJac:
         out = out.at[:, self.n_par:self.n_par + Jy_0.shape[1]].add(v[:, :self.Jy.shape[1]]@Jy_0)
 
         Jy_N = self.Jy[-1, :, :-1]
-        out = out.at[:, self.n_par - self.Jk.shape[2] - Jy_N.shape[1]:self.n_par - self.Jk.shape[2]].add(v[:, -self.Jmesh.shape[0] - self.Jy.shape[1] - self.n_dim:-self.Jmesh.shape[0] - self.n_dim]@Jy_N)
+        out = out.at[:, self.n_par - self.Jk.shape[1] - Jy_N.shape[1]:self.n_par - self.Jk.shape[1]].add(v[:, -self.Jmesh.shape[0] - self.Jy.shape[1] - self.n_dim:-self.Jmesh.shape[0] - self.n_dim]@Jy_N)
         
         def loop_body(carry, _):
             i, out = carry
@@ -579,7 +578,7 @@ class BVPMMJac:
             return (i + 1, out), _
 
         out = jax.lax.scan(loop_body, init=(1, out), xs=None, length=self.Jy.shape[0] - 2)[0][1]
-        out = out.at[:, self.n_par:self.n_par - self.Jk.shape[2]].set(unpermute_q_mesh(out[:, self.n_par:self.n_par - self.Jk.shape[2]], self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted))
+        out = out.at[:, self.n_par:self.n_par - self.Jk.shape[1]].set(unpermute_q_mesh(out[:, self.n_par:self.n_par - self.Jk.shape[1]], self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted))
 
         if is_vector:
             out = out.ravel()
@@ -596,7 +595,7 @@ class BVPMMJac:
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]]
         vy = permute_q_mesh(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]:]])
-        out = np.vstack([np.pad(np.vstack(self.Jk)@vk, ((0, self.n_dim), (0, 0))), self.Jmesh@vy])
+        out = np.pad(self.Jk@vk, ((0, self.Jy.shape[0] * (self.Jy.shape[1] + 1) - 1 + self.n_dim - self.Jk.shape[0]), (0, 0)))
         
         Jy_0 = np.hstack([self.Jy[0, :, :self.n_dim], self.Jy[0, :, self.n_dim + 1:]])
         out = out.at[:self.Jy.shape[1], :out.shape[1]].add(Jy_0@vy[:Jy_0.shape[1]])
@@ -623,9 +622,9 @@ class BVPMMJac:
     @jax.jit
     def right_multiply_diag(self, D):
 
-        Dy = D[self.n_par:self.n_par - self.Jk.shape[2]]
+        Dy = D[self.n_par:self.n_par - self.Jk.shape[1]]
         Dy = permute_q_mesh(Dy, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)
-        Dk = np.concatenate([D[:self.n_par], D[self.n_par - self.Jk.shape[2]:]])
+        Dk = np.concatenate([D[:self.n_par], D[self.n_par - self.Jk.shape[1]:]])
 
         Jy = self.Jy.at[0, :, :self.n_dim].multiply(Dy[:self.n_dim])
         Jy = Jy.at[0, :, self.n_dim + 1:].multiply(Dy[self.n_dim:Jy.shape[2] - 1])
@@ -640,7 +639,7 @@ class BVPMMJac:
             return (i + 1, Jy), _
 
         Jy = jax.lax.scan(loop_body, init=(1, Jy), xs=None, length=self.Jy.shape[0] - 2)[0][1]
-        Jk = np.reshape(np.vstack(self.Jk) * Dk, (self.Jk.shape))
+        Jk = self.Jk * Dk
         Jbc_left = self.Jbc_left * Dy[:self.n_dim]
         Jbc_right = self.Jbc_right * Dy[-self.n_dim:]
         
@@ -822,13 +821,13 @@ class BVPMMJac_1:
         self.Jbc = Jbc
         self.n_dim = n_dim
         self.n_par = n_par
-        self.shape = ((Jy.shape[0] * Jy.shape[1] + Jbc.shape[0], Jy.shape[0] * Jy.shape[1] + n_dim + Jy.shape[0] + Jk.shape[2]))
+        self.shape = ((Jy.shape[0] * Jy.shape[1] + Jbc.shape[0], Jy.shape[0] * Jy.shape[1] + n_dim + Jy.shape[0] + Jk.shape[1]))
         self.colloc_points_unshifted = colloc_points_unshifted
 
     @jax.jit
     def todense(self):
 
-        Jk = np.vstack(self.Jk)
+        Jk = np.pad(self.Jk, ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
         Jy_dense = np.zeros((self.Jy.shape[0] * self.Jy.shape[1], self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim))
         Jm_dense = np.zeros((self.Jy.shape[0] * self.Jy.shape[1], self.Jy.shape[0]))
 
@@ -840,7 +839,7 @@ class BVPMMJac_1:
             return (i + 1, Jy_dense, Jm_dense), _
 
         Jy_mesh_dense = np.hstack(jax.lax.scan(loop_body, init=(0, Jy_dense, Jm_dense), xs=None, length=self.Jy.shape[0])[0][1:])
-        return np.vstack([np.hstack([Jk, Jy_mesh_dense]), np.pad(unpermute_q_mesh_1(self.Jbc, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted), ((0, 0), (self.n_par, 0)))])
+        return np.hstack([Jk, np.vstack([Jy_mesh_dense, unpermute_q_mesh_1(self.Jbc, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)])])
 
     @jax.jit
     def left_multiply(self, v):
@@ -850,8 +849,7 @@ class BVPMMJac_1:
             v = np.expand_dims(v, 0)
 
         out = np.zeros((v.shape[0], self.shape[1]))
-        Jk = np.vstack(self.Jk)
-        out = out.at[:, :self.n_par].add(v[:, :Jk.shape[0]]@Jk)
+        out = out.at[:, :self.n_par].add(v[:, :self.Jk.shape[0]]@self.Jk)
         out = out.at[:, self.n_par:].add(v[:, -self.Jbc.shape[0]:]@self.Jbc)
         
         def loop_body(carry, _):
@@ -878,7 +876,7 @@ class BVPMMJac_1:
 
         vy = v[self.n_par:]
         vy = permute_q_mesh_1(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
-        out = np.vstack([np.vstack(self.Jk)@v[:self.n_par], self.Jbc@vy])
+        out = np.vstack([self.Jk@v[:self.n_par], self.Jbc@vy])
         
         def loop_body(carry, _):
             i, out = carry
@@ -907,7 +905,7 @@ class BVPMMJac_1:
             return i + 1, Jy_i * Dy_i
 
         Jy = jax.lax.scan(loop_body, init=0, xs=self.Jy)[1]
-        Jk = np.reshape(np.vstack(self.Jk) * Dk, (self.Jk.shape))
+        Jk = self.Jk * Dk
         
         return BVPMMJac_1(Jy, Jk, Jbc, self.n_dim, self.n_par, self.colloc_points_unshifted)
 
@@ -938,9 +936,9 @@ class BVPMMJac_1:
         Rbc = out[0][3]
         h, tau, Rc = out[1]
         Qbc, Rbc_i = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:])
-        Rbc = Rbc.at[-self.Jy.shape[0] - self.n_dim:-self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
+        Rbc = Rbc.at[Rbc.shape[0] - self.Jy.shape[0] - self.n_dim:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
 
-        return BVPMMJac_LQ_1(h, tau, Qbc, Rc, Rbc[:-self.Jy.shape[0] - self.n_dim + Rbc.shape[1]], self.n_dim, self.n_par, self.colloc_points_unshifted)
+        return BVPMMJac_LQ_1(h, tau, Qbc, Rc, Rbc[:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]], self.n_dim, self.n_par, self.colloc_points_unshifted)
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jbc, self.colloc_points_unshifted)
@@ -1034,7 +1032,7 @@ class BVPMMJac_LQ_1:
 
         pad_width = self.Rc.shape[0] + self.n_dim - self.Rbc.shape[1]
         v = np.pad(v, ((0, pad_width), (0, 0)))
-        v = v.at[-self.Qbc.shape[0]:].set(self.Qbc@v[-self.Qbc.shape[1] - pad_width:-pad_width])
+        v = v.at[-self.Qbc.shape[0]:].set(self.Qbc@v[v.shape[0] - self.Qbc.shape[1] - pad_width:v.shape[0] - pad_width])
 
         def loop_body(carry, _):
             i, v = carry

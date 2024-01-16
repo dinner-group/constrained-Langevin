@@ -67,7 +67,7 @@ def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
 @jax.jit
 def factor_bvpjac_k(J, J_LQ):
 
-    Jk = np.pad(np.vstack(J.Jk), ((0, J.shape[0] - J.Jk.shape[0]), (0, 0)))
+    Jk = np.pad(J.Jk, ((0, J.shape[0] - J.Jk.shape[0]), (0, 0)))
     E = J_LQ.solve_triangular_L(Jk)
     Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
     return E, Q_k, R_k
@@ -134,12 +134,11 @@ def factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ):
     for i in range(len(J)):
         col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
 
-    Jk = np.vstack([np.pad(np.vstack(J[i].Jk[:, :, :J[i].n_par]), ((0, J[i].shape[0] - J[i].Jk.shape[0] * J[i].Jk.shape[1]), (0, 0))) for i in range(len(J))])
-    Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[2] - J_i.n_par for J_i in J]))))
+    Jk = np.vstack([np.pad(J[i].Jk[:, :J[i].n_par], ((0, J[i].shape[0] - J[i].Jk.shape[0]), (0, 0))) for i in range(len(J))])
+    Jk = np.pad(Jk, ((0, 0), (0, sum([J_i.Jk.shape[1] - J_i.n_par for J_i in J]))))
 
     for i in range(len(J)):
-        Jk_i = np.vstack(J[i].Jk[:, :, J[i].Jk.shape[2] - J[i].shape[0]:])
-        Jk = Jk.at[row_indices[i]:row_indices[i] + Jk_i.shape[0], col_indices_k[i]:col_indices_k[i + 1]].set(Jk_i[:, J[0].n_par:])
+        Jk = Jk.at[row_indices[i]:row_indices[i] + J[i].Jk.shape[0], col_indices_k[i]:col_indices_k[i + 1]].set(J[i].Jk[:, J[i].n_par:])
 
     E = np.vstack([J_LQ[i].solve_triangular_L(Jk[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
     Q_k, R_k = np.linalg.qr(np.vstack([np.identity(Jk.shape[1]), E]))
@@ -165,7 +164,7 @@ def lstsq_bvpjac_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=No
     col_indices_k[0] = J[0].n_par
 
     for i in range(len(J)):
-        col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[2] - J[i].n_par
+        col_indices_k[i + 1] = col_indices_k[i] + J[i].Jk.shape[1] - J[i].n_par
 
     w = np.concatenate([J_LQ[i].solve_triangular_L(b[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
     out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w)
