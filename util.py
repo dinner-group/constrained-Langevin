@@ -291,7 +291,7 @@ class BVPJac:
 
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim]
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim:]])
-        out = np.pad(self.Jk@vk, ((0, self.Jy.shape[0] * (self.Jy.shape[1] + 1) - 1 + self.n_dim - self.Jk.shape[0]), (0, 0)))
+        out = np.pad(self.Jk@vk, ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
 
         def loop_body(carry, _):
             i, out = carry
