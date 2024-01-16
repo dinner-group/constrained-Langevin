@@ -73,7 +73,7 @@ def factor_bvpjac_k(J, J_LQ):
     return E, Q_k, R_k
 
 @jax.jit
-def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
+def qr_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
     if J_LQ is None:
         J_LQ = J.lq_factor()
@@ -117,7 +117,7 @@ def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None):
         b = sqrtMinv * b
 
     JMinvb = JsqrtMinv.right_multiply(b)
-    out = lstsq_bvpjac(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
+    out = qr_lstsq_bvp(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     return b - out[0], out[1], J_and_factor
 
 @jax.jit
@@ -146,7 +146,7 @@ def factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ):
     return E, Q_k, R_k
 
 @jax.jit
-def lstsq_bvpjac_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
+def qr_lstsq_bvp_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
     if J_LQ is None:
         J_LQ = tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv)
@@ -220,7 +220,7 @@ def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=N
         b = sqrtMinv * b
 
     JMinvb = np.concatenate([JsqrtMinv[i].right_multiply(np.concatenate([b[:J[0].n_par], b[row_indices_b[i]:row_indices_b[i + 1]]])) for i in range(len(J))])
-    out = lstsq_bvpjac_multi_eqn_shared_k(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
+    out = qr_lstsq_bvp_multi_eqn_shared_k(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     return b - out[0], out[1], J_and_factor 
 
 class LinSolColloc():
