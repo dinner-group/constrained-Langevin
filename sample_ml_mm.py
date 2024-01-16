@@ -81,7 +81,7 @@ thin = 100
 #jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-#traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+#traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
 #                                  max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 ml1 = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
@@ -95,7 +95,7 @@ jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_multi_eqn_shared_k_symm_broyden, 
-                                 linsol=linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k, max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
+                                 linsol=linear_solver.qr_ortho_proj_bvp_multi_eqn_shared_k, max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 np.save("ml_lc_%d_%d.npy"%(argp.iter, argp.process), traj_ml_lc)
 np.save("ml_lc_key_%d_%d.npy"%(argp.iter, argp.process), key_lc)

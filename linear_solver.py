@@ -6,7 +6,7 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @jax.jit
-def qr_lstsq_rattle(J, b, J_and_factor=None, inverse_mass=None):
+def qr_ortho_proj(J, b, J_and_factor=None, inverse_mass=None):
 
     if J_and_factor is None:
         if inverse_mass is None:
@@ -40,7 +40,7 @@ def qr_lstsq_rattle(J, b, J_and_factor=None, inverse_mass=None):
     return b - b_proj, b_proj_coeff, J_and_factor
 
 @jax.jit
-def qr_lstsq_rattle_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
+def qr_ortho_proj_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
 
     if J_and_factor is None:
         if inverse_mass is None:
@@ -96,7 +96,7 @@ def lstsq_bvpjac(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
     return out, u
 
 @jax.jit
-def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
+def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None):
 
     if inverse_mass is None:
         sqrtMinv = None
@@ -105,7 +105,7 @@ def qr_lstsq_rattle_bvp(J, b, J_and_factor=None, inverse_mass=None):
         sqrtMinv = np.sqrt(inverse_mass)
         JsqrtMinv = J.right_multiply_diag(sqrtMinv)
     else:
-        return qr_lstsq_rattle_bvp_dense(J, b, J_and_factor, inverse_mass)
+        return qr_ortho_proj_bvp_dense(J, b, J_and_factor, inverse_mass)
 
     if J_and_factor is None:
         J_and_factor = (J, JsqrtMinv.lq_factor())
@@ -181,7 +181,7 @@ def lstsq_bvpjac_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=No
     return out, u
 
 @jax.jit
-def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=None):
+def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=None):
 
     if inverse_mass is None:
         sqrtMinv = None
@@ -202,7 +202,7 @@ def qr_lstsq_rattle_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass
             ind_stop = (ind[0] + J[i - 1].shape[0], ind[1] + J[i - 1].shape[1] - J[i - 1].n_par)
             J_dense = J_dense.at[ind_start[0]:ind_stop[0], ind_start[1]:ind_stop[1]].set(J[i].todense()[:, J[i].n_par:])
             ind_start = ind_stop
-        return qr_lstsq_rattle(J_dense, b, None, inverse_mass)
+        return qr_ortho_proj(J_dense, b, None, inverse_mass)
 
     if J_and_factor is None:
         J_and_factor = (J, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))

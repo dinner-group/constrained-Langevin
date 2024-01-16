@@ -252,7 +252,7 @@ thin = 100
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac,
-#                                 A=lgvn.rattle_drift_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+#                                 A=lgvn.rattle_drift_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
 #                                 max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 #traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_rattle_symm_broyden, 
@@ -267,7 +267,7 @@ thin = 100
 #jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
 #                                  max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 #kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
@@ -279,7 +279,7 @@ thin = 100
 #jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
 #                                  max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 #kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
@@ -291,7 +291,7 @@ thin = 100
 #jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+#traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
 #                                  max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 kai06 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=6/35)
@@ -303,7 +303,7 @@ potential = lambda *args:kai_bvp_potential_mm_multi(*args, n_mesh_intervals=(n_m
 resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals))
 nlsol = nonlinear_solver.quasi_newton_bvp_multi_eqn_shared_k_symm_broyden
-linsol = linear_solver.qr_lstsq_rattle_bvp_multi_eqn_shared_k
+linsol = linear_solver.qr_ortho_proj_bvp_multi_eqn_shared_k
 n_constraints = resid(q0, *args).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 traj_kai_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nlsol, linsol=linsol, max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)

@@ -104,7 +104,7 @@ l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 n_steps = argp.n_steps
 thin = argp.thin
 
-traj_rp_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_lstsq_rattle_bvp,
+traj_rp_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
                                  max_newton_iter=100, tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6, print_acceptance=True)
 
 np.save("repressilator_%d_lc_infer_%d_%d.npy"%(n_dim, argp.iter, argp.process), traj_rp_lc)
