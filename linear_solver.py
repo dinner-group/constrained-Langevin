@@ -96,7 +96,7 @@ def qr_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
     return out, u
 
 @jax.jit
-def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None):
+def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None, return_parallel_component=True):
 
     if inverse_mass is None:
         sqrtMinv = None
@@ -118,7 +118,8 @@ def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None):
 
     JMinvb = JsqrtMinv.right_multiply(b)
     out = qr_lstsq_bvp(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
-    return b - out[0], out[1], J_and_factor
+    projection = np.where(return_parallel_component, b - out[0], out[0])
+    return projection, out[1], J_and_factor
 
 @jax.jit
 def factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ):
