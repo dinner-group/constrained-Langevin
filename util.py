@@ -595,7 +595,7 @@ class BVPMMJac:
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]]
         vy = permute_q_mesh(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]:]])
-        out = np.pad(self.Jk@vk, ((0, self.Jy.shape[0] * (self.Jy.shape[1] + 1) - 1 + self.n_dim - self.Jk.shape[0]), (0, 0)))
+        out = np.pad(self.Jk@vk, ((0, self.shape[0] - self.Jk.shape[0]]), (0, 0)))
         out = out.at[-self.Jmesh.shape[0]:].add(self.Jmesh@vy)
         
         Jy_0 = np.hstack([self.Jy[0, :, :self.n_dim], self.Jy[0, :, self.n_dim + 1:]])
@@ -877,7 +877,8 @@ class BVPMMJac_1:
 
         vy = v[self.n_par:]
         vy = permute_q_mesh_1(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
-        out = np.vstack([self.Jk@v[:self.n_par], self.Jbc@vy])
+        out = np.pad(self.Jk@v[:self.n_par], ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
+        out = out.at[-self.Jbc.shape[0]].add(self.Jbc@vy)
         
         def loop_body(carry, _):
             i, out = carry
