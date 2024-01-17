@@ -878,7 +878,7 @@ class BVPMMJac_1:
         vy = v[self.n_par:]
         vy = permute_q_mesh_1(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
         out = np.pad(self.Jk@v[:self.n_par], ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
-        out = out.at[-self.Jbc.shape[0]].add(self.Jbc@vy)
+        out = out.at[-self.Jbc.shape[0]:].add(self.Jbc@vy)
         
         def loop_body(carry, _):
             i, out = carry
