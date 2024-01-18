@@ -84,7 +84,7 @@ def qr_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
     w = J_LQ.solve_triangular_L(b)
     out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.shape[0]:].T@w, lower=False)
     u = w - E@out_k
-    out_y = J_LQ.Q_right_multiply(u)
+    out_y = J_LQ.Q_multiply(u)
     out = np.concatenate([out_k[:J.n_par], out_y, out_k[J.n_par:]])
 
     if sqrtMinv is not None:
@@ -170,7 +170,7 @@ def qr_lstsq_bvp_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=No
     w = np.concatenate([J_LQ[i].solve_triangular_L(b[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
     out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w)
     u = w - E@out_k
-    out_y = [J_LQ[i].Q_right_multiply(u[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))]
+    out_y = [J_LQ[i].Q_multiply(u[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))]
     out = np.concatenate([out_k[:J[0].n_par]] + sum(([out_y[i], out_k[col_indices_k[i]:col_indices_k[i + 1]]] for i in range(len(J))), []))
 
     if sqrtMinv is not None:

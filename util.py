@@ -466,7 +466,7 @@ class BVPJac_LQ:
         return x
 
     @jax.jit
-    def Q_right_multiply(self, v):
+    def Q_multiply(self, v):
         
         is_vector = len(v.shape) == 1
         if is_vector:
@@ -770,7 +770,7 @@ class BVPMMJac_LQ:
         return x
 
     @jax.jit
-    def Q_right_multiply(self, v):
+    def Q_multiply(self, v):
 
         is_vector = len(v.shape) == 1
         if is_vector:
@@ -1026,7 +1026,7 @@ class BVPMMJac_LQ_1:
         return x
 
     @jax.jit
-    def Q_right_multiply(self, v):
+    def Q_multiply(self, v):
 
         is_vector = len(v.shape) == 1
         if is_vector:
