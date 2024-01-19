@@ -262,7 +262,7 @@ def periodic_bvp_mm_colloc_resid_1(q, ode_model, colloc_points_unshifted=util.ga
     resid = np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
 
     if phase_condition is not None:
-        resid = np.concatenate([resid, np.ravel(phase_condition(q, ode_model=ode_model, *args, **kwargs))])
+        resid = np.concatenate([resid, np.ravel(phase_condition(q, ode_model=ode_model, n_mesh_intervals=n_mesh_intervals, *args, **kwargs))])
 
     return resid
 
@@ -302,7 +302,7 @@ def periodic_bvp_mm_colloc_jac_1(q, ode_model, colloc_points_unshifted=util.gaus
     Jk = np.pad(Jk, ((0, Jy.shape[0] * (Jy.shape[1] + 1) - 1 + ode_model.n_dim - Jk.shape[0]), (0, 0)))
 
     if phase_condition is not None:
-        Jpc = jax.jacrev(phase_condition)(q, ode_model=ode_model, *args, **kwargs)
+        Jpc = jax.jacrev(phase_condition)(q, ode_model=ode_model, n_mesh_intervals=n_mesh_intervals, *args, **kwargs)
         if len(Jpc.shape) == 1:
             Jpc = np.expand_dims(Jpc, 0)
         Jk = np.vstack([Jk, Jpc[:, :ode_model.n_par]])
