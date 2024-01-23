@@ -8,7 +8,7 @@ midpoint = np.array([0])
 lobatto_points_3 = np.array([-1, 0, 1])
 gauss_points_2 = np.array([-np.sqrt(1/3), np.sqrt(1/3)])
 gauss_points_3 = np.array([-np.sqrt(3/5), 0, np.sqrt(3/5)])
-gauss_points = np.array([-np.sqrt(3/7 + (2/7) * np.sqrt(6/5)), -np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 + (2/7) * np.sqrt(6/5))])
+gauss_points_4 = np.array([-np.sqrt(3/7 + (2/7) * np.sqrt(6/5)), -np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 + (2/7) * np.sqrt(6/5))])
 gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 
 @jax.jit
@@ -16,8 +16,8 @@ def smooth_max(x, smooth_max_temperature=1):
     return np.sum(x * np.exp(smooth_max_temperature * x)) / np.sum(np.exp(smooth_max_temperature * x))
 
 @jax.jit
-def fill_mesh(t, gauss_points=gauss_points):
-    return np.concatenate([np.ravel(np.expand_dims(t[:-1], 1) + np.expand_dims(t[1:] - t[:-1], 1) * np.linspace(0, 1, gauss_points.size + 1)[:-1]), t[-1:]])
+def fill_mesh(t, colloc_points_unshifted=gauss_points_4):
+    return np.concatenate([np.ravel(np.expand_dims(t[:-1], 1) + np.expand_dims(t[1:] - t[:-1], 1) * np.linspace(0, 1, colloc_points_unshifted.size + 1)[:-1]), t[-1:]])
 
 expand_mesh = fill_mesh
 
@@ -91,7 +91,7 @@ def weighted_average_periodic_smoothing(x, n_smooth=4):
     return x
 
 @partial(jax.jit, static_argnums=3)
-def recompute_mesh(y, mesh_old, colloc_points_unshifted=gauss_points, n_smooth=4):
+def recompute_mesh(y, mesh_old, colloc_points_unshifted=gauss_points_4, n_smooth=4):
     
     def loop_body(i, _):
         meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), colloc_points_unshifted.size + 1)
@@ -110,33 +110,33 @@ def recompute_mesh(y, mesh_old, colloc_points_unshifted=gauss_points, n_smooth=4
     return mesh_new, mesh_density
 
 @jax.jit
-def recompute_node_y(y, mesh_old, mesh_new, gauss_points=gauss_points):
+def recompute_node_y(y, mesh_old, mesh_new, gauss_points_4=gauss_points_4):
 
-    t_eval = fill_mesh(mesh_new, gauss_points)
-    y_interp = interpolate(y, mesh_old, t_eval[1:-1], gauss_points)
+    t_eval = fill_mesh(mesh_new, gauss_points_4)
+    y_interp = interpolate(y, mesh_old, t_eval[1:-1], gauss_points_4)
     return np.hstack([y[:, :1], y_interp, y[:, -1:]])
 
 @jax.jit
-def interpolate(y, mesh_points, t_eval, gauss_points=gauss_points):
+def interpolate(y, mesh_points, t_eval, gauss_points_4=gauss_points_4):
     
     def loop1(i, _):
-        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points.size + 1)
-        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points_4.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points_4.size,), (y.shape[0], gauss_points_4.size + 1))
         return i + 1, divided_difference(meshi, yi)
         
     dd = jax.lax.scan(loop1, init=0, xs=None, length=mesh_points.size - 1)[1]
         
     def loop2(_, t):
         i = np.maximum(np.searchsorted(mesh_points, t) - 1, 0)
-        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points.size + 1)
-        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points.size,), (y.shape[0], gauss_points.size + 1))
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points_4.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points_4.size,), (y.shape[0], gauss_points_4.size + 1))
         return _, newton_polynomial(t, meshi, yi, dd[i])
     
     _, y_interp = jax.lax.scan(loop2, init=None, xs=t_eval)
     return y_interp.T
 
 @partial(jax.jit, static_argnums=(1, 2))
-def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points):
+def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
    
     is_vector = len(x.shape) == 1
     if is_vector:
@@ -152,7 +152,7 @@ def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_poi
     return x
 
 @partial(jax.jit, static_argnames=("n_dim", "n_mesh_intervals"))
-def permute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points):
+def permute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
    
     is_vector = len(x.shape) == 1
     if is_vector:
@@ -168,7 +168,7 @@ def permute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_p
 
 
 @partial(jax.jit, static_argnums=(1, 2))
-def unpermute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points):
+def unpermute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
     
     is_vector = len(x.shape) == 1
     if is_vector:
@@ -185,7 +185,7 @@ def unpermute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_p
     return x
 
 @partial(jax.jit, static_argnames=("n_dim", "n_mesh_intervals"))
-def unpermute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points):
+def unpermute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
     
     is_vector = len(x.shape) == 1
     if is_vector:
@@ -498,7 +498,7 @@ class BVPJac_LQ:
 
 class BVPMMJac:
 
-    def __init__(self, Jy, Jk, Jmesh, n_dim, n_par, Jbc_left=None, Jbc_right=None, colloc_points_unshifted=gauss_points):
+    def __init__(self, Jy, Jk, Jmesh, n_dim, n_par, Jbc_left=None, Jbc_right=None, colloc_points_unshifted=gauss_points_4):
         self.Jy = Jy
         self.Jk = Jk
         self.Jmesh = Jmesh
@@ -699,7 +699,7 @@ class BVPMMJac:
 
 class BVPMMJac_LQ:
 
-    def __init__(self, Q_c, Q_bc, R_c, R_bc, n_dim, n_par, colloc_points_unshifted=gauss_points):
+    def __init__(self, Q_c, Q_bc, R_c, R_bc, n_dim, n_par, colloc_points_unshifted=gauss_points_4):
 
         self.Q_c = Q_c
         self.Q_bc = Q_bc
@@ -816,7 +816,7 @@ class BVPMMJac_LQ:
 
 class BVPMMJac_1:
 
-    def __init__(self, Jy, Jk, Jbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
+    def __init__(self, Jy, Jk, Jbc, n_dim, n_par, colloc_points_unshifted=gauss_points_4):
         self.Jy = Jy
         self.Jk = Jk
         self.Jbc = Jbc
@@ -953,7 +953,7 @@ class BVPMMJac_1:
 
 class BVPMMJac_LQ_1:
 
-    def __init__(self, h_c, tau_c, Qbc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points):
+    def __init__(self, h_c, tau_c, Qbc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points_4):
 
         self.h_c = h_c
         self.tau_c = tau_c

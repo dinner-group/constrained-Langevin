@@ -21,9 +21,9 @@ def rattle_drift_brusselator_bvp_mm(position, momentum, lagrange_multiplier, dt,
     y = y.reshape((model.Brusselator.n_dim, y.size // model.Brusselator.n_dim), order="F")
     yp = momentum[model.Brusselator.n_par:-1]
     yp = yp.reshape((model.Brusselator.n_dim, yp.size // model.Brusselator.n_dim), order="F")
-    mesh_new, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
-    y_new = util.recompute_node_y(y, mesh_points, mesh_new, util.gauss_points)
-    yp_new = util.recompute_node_y(yp, mesh_points, mesh_new, util.gauss_points)
+    mesh_new, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points_4)
+    y_new = util.recompute_node_y(y, mesh_points, mesh_new, util.gauss_points_4)
+    yp_new = util.recompute_node_y(yp, mesh_points, mesh_new, util.gauss_points_4)
     position = position.at[model.Brusselator.n_par:-1].set(y_new.ravel(order="F"))
     momentum = momentum.at[model.Brusselator.n_par:-1].set(yp_new.ravel(order="F"))
     constraint_args = list(constraint_args)
@@ -42,7 +42,7 @@ n_mesh_intervals = 60
 #mesh_points = np.linspace(0, 1, n_mesh_intervals + 1)
 #mesh_points = np.load("brusselator_lc_mesh%d.npy"%i)
 #n_mesh_intervals = mesh_points.size - 1
-n_points = n_mesh_intervals * util.gauss_points.size + 1
+n_points = n_mesh_intervals * util.gauss_points_4.size + 1
 fourier_basis_size = 100
 
 x = np.load("brusselator_lc%d.npy"%(i - 1))[-1]

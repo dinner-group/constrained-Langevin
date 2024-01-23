@@ -40,7 +40,7 @@ def fully_extended_hopf_log(q, ode_model, *args):
     return fully_extended_hopf(q, ode_model, *args)
 
 @jax.jit
-def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points):
+def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4):
 
     colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * (interval_endpoints[1] - interval_endpoints[0]) / 2
     node_points = np.linspace(*interval_endpoints, colloc_points.size + 1)
@@ -75,7 +75,7 @@ def fully_extended_hopf_2n_log(q, ode_model, *args):
     return fully_extended_hopf_2n(q, ode_model, *args)
 
 @jax.jit
-def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points, *args):
+def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points_4, *args):
 
     n_mesh_intervals = mesh_points.size - 1
     k = q[:ode_model.n_par]
@@ -93,7 +93,7 @@ def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), c
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0]])
 
 @jax.jit
-def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points, *args):
+def periodic_bvp_colloc_jac(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points_4, *args):
 
     n_mesh_intervals = mesh_points.size - 1
     k = q[:ode_model.n_par]
@@ -180,7 +180,7 @@ def periodic_bvp_mm_colloc_resid_hermite3(q, ode_model, *args, n_mesh_intervals=
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
 
 @partial(jax.jit, static_argnames=("n_smooth",))
-def bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.gauss_points, n_smooth=4):
+def bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.gauss_points_4, n_smooth=4):
 
     n_mesh_intervals = mesh_points.size - 1
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -191,7 +191,7 @@ def bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.ga
     return n_mesh_intervals * mesh_mass_interval[:-1] - mesh_mass
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
-def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60, n_smooth=4):
+def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_4, *args, n_mesh_intervals=60, n_smooth=4):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -211,7 +211,7 @@ def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gaus
     return np.concatenate([colloc_eqs, y[:, -1] - y[:, 0], mesh_eqs])
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
-def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points, *args, n_mesh_intervals=60, n_smooth=4):
+def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4, *args, n_mesh_intervals=60, n_smooth=4):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -249,7 +249,7 @@ def periodic_boundary_condition(q, ode_model, n_mesh_intervals, colloc_points_un
     return y[:, -1] - y[:, 0]
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth", "boundary_condition"))
-def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
+def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_4, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -270,7 +270,7 @@ def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points,
     return resid
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth", "boundary_condition"))
-def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
+def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -313,7 +313,7 @@ def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points, b
 def periodic_bvp_mm_colloc_resid_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4):
 
     if colloc_points_unshifted is None:
-        colloc_points_unshifted = (util.gauss_points for _ in ode_models)
+        colloc_points_unshifted = (util.gauss_points_4 for _ in ode_models)
 
     if n_mesh_intervals is None:
         n_mesh_intervals = (60 for _ in ode_models)
@@ -331,7 +331,7 @@ def periodic_bvp_mm_colloc_resid_multi_eqn_shared_k(q, ode_models, colloc_points
 def periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4):
 
     if colloc_points_unshifted is None:
-        colloc_points_unshifted = (util.gauss_points for _ in ode_models)
+        colloc_points_unshifted = (util.gauss_points_4 for _ in ode_models)
 
     if n_mesh_intervals is None:
         n_mesh_intervals = (60 for _ in ode_models)
@@ -437,14 +437,14 @@ def brusselator_bvp(q, mesh_points=np.linspace(0, 1, 61)):
    
     n_mesh_intervals = mesh_points.size - 1
     k = np.exp(q[:model.Brusselator.n_par])
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
     
     def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
-        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points_4.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points_4 * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points_4.size), (model.Brusselator.n_dim, util.gauss_points_4.size + 1))
         r_i = brusselator_bvp_interval(y_i, k, period, colloc_points, node_points)
         return i + 1, r_i
     
@@ -456,16 +456,16 @@ def brusselator_bvp_jac(q, mesh_points=np.linspace(0, 1, 61)):
    
     n_mesh_intervals = mesh_points.size - 1
     k = np.exp(q[:model.Brusselator.n_par])
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
     
     def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
-        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points_4.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points_4 * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points_4.size), (model.Brusselator.n_dim, util.gauss_points_4.size + 1))
         Jy_i = jax.jacfwd(brusselator_bvp_interval, argnums=0)(y_i, k, period, colloc_points, node_points)\
-                .reshape((util.gauss_points.size * model.Brusselator.n_dim, (util.gauss_points.size + 1) * model.Brusselator.n_dim), order="F")
+                .reshape((util.gauss_points_4.size * model.Brusselator.n_dim, (util.gauss_points_4.size + 1) * model.Brusselator.n_dim), order="F")
         Jk_i = jax.jacfwd(lambda x:brusselator_bvp_interval(y_i, np.exp(x), period, colloc_points, node_points))(q[:model.Brusselator.n_par])
         Jw_i = jax.jacfwd(brusselator_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
         return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
@@ -480,12 +480,12 @@ def brusselator_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
 
     E = 0
     
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     min_arclength = 0.3
     max_mesh_density = 10
-    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
+    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points_4)
     #mesh_quality = (mesh_points.size - 1) * (mesh_density[1:] + mesh_density[:-1]) * (mesh_points[1:] - mesh_points[:-1]) / (2 * jax.scipy.integrate.trapezoid(mesh_density, mesh_points))
     
     #E += 20 * (util.smooth_max(mesh_quality, smooth_max_temperature=6) - 1)**2
@@ -517,14 +517,14 @@ def brusselator_log_bvp(q, mesh_points=np.linspace(0, 1, 61)):
    
     n_mesh_intervals = mesh_points.size - 1
     k = q[:model.Brusselator.n_par]
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape((model.Brusselator.n_dim, n_points), order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
     
     def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
-        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points_4.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points_4 * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points_4.size), (model.Brusselator.n_dim, util.gauss_points_4.size + 1))
         r_i = brusselator_log_bvp_interval(y_i, k, period, colloc_points, node_points)
         return i + 1, r_i
     
@@ -536,16 +536,16 @@ def brusselator_log_bvp_jac(q, mesh_points=np.linspace(0, 1, 61)):
    
     n_mesh_intervals = mesh_points.size - 1
     k = q[:model.Brusselator.n_par]
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     y = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape((model.Brusselator.n_dim, n_points), order="F")
     period = q[model.Brusselator.n_par + n_points * model.Brusselator.n_dim]
     
     def loop_body(i, _):
-        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points.size + 1)
-        colloc_points = mesh_points[i] + util.gauss_points * (mesh_points[i + 1] - mesh_points[i])
-        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points.size), (model.Brusselator.n_dim, util.gauss_points.size + 1))
+        node_points = np.linspace(mesh_points[i], mesh_points[i + 1], util.gauss_points_4.size + 1)
+        colloc_points = mesh_points[i] + util.gauss_points_4 * (mesh_points[i + 1] - mesh_points[i])
+        y_i = jax.lax.dynamic_slice(y, (0, i * util.gauss_points_4.size), (model.Brusselator.n_dim, util.gauss_points_4.size + 1))
         Jy_i = jax.jacfwd(brusselator_log_bvp_interval, argnums=0)(y_i, k, period, colloc_points, node_points)\
-                .reshape((util.gauss_points.size * model.Brusselator.n_dim, (util.gauss_points.size + 1) * model.Brusselator.n_dim), order="F")
+                .reshape((util.gauss_points_4.size * model.Brusselator.n_dim, (util.gauss_points_4.size + 1) * model.Brusselator.n_dim), order="F")
         Jk_i = jax.jacfwd(brusselator_log_bvp_interval, argnums=1)(y_i, k, period, colloc_points, node_points)
         Jw_i = jax.jacfwd(brusselator_log_bvp_interval, argnums=2)(y_i, k, period, colloc_points, node_points)
         return i + 1, (Jy_i, np.hstack([Jk_i, Jw_i.reshape([Jw_i.size, 1])]))
@@ -559,11 +559,11 @@ def brusselator_log_bvp_potential(q, mesh_points=np.linspace(0, 1, 61)):
     n_mesh_intervals = mesh_points.size - 1
     E = 0
 
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     logy = q[model.Brusselator.n_par:model.Brusselator.n_par + n_points * model.Brusselator.n_dim].reshape(model.Brusselator.n_dim, n_points, order="F")
     arclength = np.linalg.norm(logy[:, 1:] - logy[:, :-1], axis=0).sum()
     min_arclength = 0.3
-    _, mesh_density = util.recompute_mesh(logy, mesh_points, util.gauss_points)
+    _, mesh_density = util.recompute_mesh(logy, mesh_points, util.gauss_points_4)
     mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
     mesh_density_peak = util.smooth_max(mesh_density, smooth_max_temperature=6)
     
@@ -590,12 +590,12 @@ def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), 
     n_mesh_intervals = mesh_points.size - 1
     E = 0
 
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     min_arclength = 0.3
-    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
+    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points_4)
     mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
     mesh_density_peak = util.smooth_max(mesh_density, smooth_max_temperature=6)
     
@@ -613,7 +613,7 @@ def morris_lecar_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 61), 
     return E
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals",))
-def morris_lecar_mm_bvp_potential(q, ode_model, colloc_points_unshifted=util.gauss_points, bounds=None, bounds_membrane_voltage=None, n_mesh_intervals=60):
+def morris_lecar_mm_bvp_potential(q, ode_model, colloc_points_unshifted=util.gauss_points_4, bounds=None, bounds_membrane_voltage=None, n_mesh_intervals=60):
 
     E = 0
 
@@ -688,12 +688,12 @@ def repressilator_log_bvp_potential(q, ode_model, mesh_points=np.linspace(0, 1, 
     n_mesh_intervals = mesh_points.size - 1
     E = 0
 
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
     min_arclength = 0.3
-    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points)
+    _, mesh_density = util.recompute_mesh(y, mesh_points, util.gauss_points_4)
     mesh_mass_interval = (mesh_points[1:] - mesh_points[:-1]) * (mesh_density[1:] + mesh_density[:-1]) / 2
     mesh_density_peak = util.smooth_max(mesh_density, smooth_max_temperature=6)
 

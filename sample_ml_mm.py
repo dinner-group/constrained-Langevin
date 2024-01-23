@@ -20,7 +20,7 @@ parser.add_argument("-iter", type=int, required=True)
 argp = parser.parse_args()
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals",))
-def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=(util.gauss_points, util.gauss_points), bounds=None, bounds_membrane_voltage=None, n_mesh_intervals=(60, 60)):
+def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_points_unshifted=(util.gauss_points_4, util.gauss_points_4), bounds=None, bounds_membrane_voltage=None, n_mesh_intervals=(60, 60)):
 
     E = 0
     k = q[:ode_models[0].n_par]
@@ -58,7 +58,7 @@ def morris_lecar_mm_bvp_potential_multi_eqn_shared_k(q, ode_models, colloc_point
     return E
 
 n_mesh_intervals = 60
-colloc_points_unshifted = util.gauss_points
+colloc_points_unshifted = util.gauss_points_4
 
 dt = 1e-2
 prng_key = np.load("ml_lc_key_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]

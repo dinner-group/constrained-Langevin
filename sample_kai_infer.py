@@ -23,10 +23,10 @@ argp = parser.parse_args()
 obs_kai_ab = np.load("kai_ab_data.npy")
 obs_kai_phos = np.load("kai_phos_data.npy")
 n_mesh_intervals = 60
-colloc_points_unshifted = util.gauss_points
+colloc_points_unshifted = util.gauss_points_4
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals",))
-def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points, n_mesh_intervals=60):
+def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points_4, n_mesh_intervals=60):
     
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     k = q[:ode_model.n_par]
@@ -72,7 +72,7 @@ def kai_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points
 
     return E
 
-def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gauss_points, util.gauss_points), n_mesh_intervals=(60, 60)):
+def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gauss_points_4, util.gauss_points_4), n_mesh_intervals=(60, 60)):
    
     k = q[:ode_models[0].n_par]
     start = ode_models[0].n_par
@@ -160,7 +160,7 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
     return E
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals",))
-def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points, n_mesh_intervals=60):
+def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gauss_points_4, n_mesh_intervals=60):
     
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
     k = q[:ode_model.n_par]
@@ -200,7 +200,7 @@ def kai_dae_log_bvp_potential_mm(q, ode_model, colloc_points_unshifted=util.gaus
 def kai_bvp_potential(q, ode_model, mesh_points):
     
     n_mesh_intervals = mesh_points.size - 1
-    n_points = n_mesh_intervals * util.gauss_points.size + 1
+    n_points = n_mesh_intervals * util.gauss_points_4.size + 1
     k = q[:ode_model.n_par]
     y = q[kai.n_par:ode_model.n_par + ode_model.n_dim * n_points].reshape((ode_model.n_dim, n_points), order="F")
     E = np.where(np.abs(k) > 7, 100 * (np.abs(k) - 7)**2 / 2, 0).sum()
@@ -273,7 +273,7 @@ thin = 100
 #kai = model.KaiABC_DAE_log_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
 #q0 = x[:kai.n_par + kai.n_dim * n_points + 1 + n_mesh_intervals - 1]
 #p0 = x[q0.size:2 * q0.size] 
-#args = (kai, util.gauss_points)
+#args = (kai, util.gauss_points_4)
 #potential = kai_dae_log_bvp_potential_mm
 #resid = lambda *args:defining_systems.periodic_bvp_mm_colloc_resid(*args, n_mesh_intervals=n_mesh_intervals)
 #jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)

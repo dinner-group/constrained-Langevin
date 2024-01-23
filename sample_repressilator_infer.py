@@ -26,14 +26,14 @@ data = np.load("repressilator_data.npy")
 t_eval = data[:, 0]
 data_period_average = data[:, 1]
 n_mesh_intervals = 60
-colloc_points_unshifted = util.gauss_points
+colloc_points_unshifted = util.gauss_points_4
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals"))
 def repressilator_log_bvp_mm_potential(q, ode_model, *args, n_mesh_intervals=60):
     
     E = 0
 
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
@@ -51,7 +51,7 @@ def repressilator_log_bvp_mm_potential(q, ode_model, *args, n_mesh_intervals=60)
 def repressilator_log_bvp_mm_inference_potential(q, ode_model, *args, n_mesh_intervals=60):
 
     std = 5e-2
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     mesh_points = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals - 2]
@@ -70,7 +70,7 @@ def repressilator_log_bvp_inference_potential(q, ode_model, mesh_points=np.linsp
 
     std = 5e-2
     n_mesh_intervals = mesh_points.size - 1
-    n_points = (n_mesh_intervals * util.gauss_points.size + 1)
+    n_points = (n_mesh_intervals * util.gauss_points_4.size + 1)
     k = q[:ode_model.n_par]
     y = q[ode_model.n_par:ode_model.n_par + n_points * ode_model.n_dim].reshape(ode_model.n_dim, n_points, order="F")
     period = q[-1]

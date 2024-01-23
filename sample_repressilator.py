@@ -20,7 +20,7 @@ prng_key = np.load("repressilator_lc_key%d.npy"%(i - 1))[-1]
 friction = 1e-1
 
 n_mesh_intervals = 60
-n_points = n_mesh_intervals * util.gauss_points.size + 1
+n_points = n_mesh_intervals * util.gauss_points_4.size + 1
 
 x = np.load("repressilator_lc%d.npy"%(i - 1))[-1]
 q0 = x[:model.Repressilator_log.n_par + model.Repressilator_log.n_dim * n_points + 1]
