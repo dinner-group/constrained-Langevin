@@ -225,6 +225,61 @@ def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=N
     return b - out[0], out[1], J_and_factor 
 
 @jax.jit
+def factor_bvpjac_k_multi_shared_k_1(J, J_LQ):
+
+    E = np.vstack([J_LQ[i].solve_triangular_L(np.pad(J[i].Jk, ((0, J[i].shape[0] - J[i].Jk.shape[0]), (0, 0)))) for i in range(len(J))])
+    Q_k, R_k = np.linalg.qr(np.vstack([np.identity(E.shape[1]), E]))
+    return E, Q_k, R_k
+
+@jax.jit
+def qr_lstsq_bvp_multi_shared_k_1(J, b, J_LQ=None, Jk_factor=None):
+
+    if J_LQ is None:
+        J_LQ = tuple(J_i.lq_factor() for J_i in J)
+    if Jk_factor is None:
+        Jk_factor = factor_bvpjac_k_multi_shared_k_1(J, J_LQ)
+
+    E, Q_k, R_k = Jk_factor
+    row_indices = [0 for _ in range(len(J) + 1)]
+
+    for i in range(len(J)):
+        row_indices[i + 1] = row_indices[i] + J[i].shape[0]
+
+    col_indices_k = [0 for _ in range(len(J) + 1)]
+    col_indices_k[0] = J[0].n_par
+
+    for i in range(len(J)):
+        col_indices_k[i + 1] = col_indices_k[i] + J[i].shape[1] - J[i].n_par
+
+    w = np.concatenate([J_LQ[i].solve_triangular_L(b[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))])
+    out_k = jax.scipy.linalg.solve_triangular(R_k, Q_k[-w.size:].T@w)
+    u = w - E@out_k
+    out_y = [J_LQ[i].Q_multiply(u[row_indices[i]:row_indices[i + 1]]) for i in range(len(J))]
+    out = np.concatenate([out_k] + out_y)
+
+    return out, u
+
+@jax.jit
+def qr_ortho_proj_bvp_multi_shared_k_1(J, b, J_and_factor=None, inverse_mass=None):
+
+    if J_and_factor is None:
+        J_and_factor = (J, tuple(J_i.lq_factor() for J_i in J))
+
+    J_LQ = J_and_factor[1]
+    Jk_factor = factor_bvpjac_k_multi_shared_k_1(J, J_LQ)
+
+    row_indices_b = [0 for _ in range(len(J) + 1)]
+    row_indices_b[0] = J[0].n_par
+    
+    for i in range(len(J)):
+        row_indices_b[i + 1] = row_indices_b[i] + J[i].shape[1] - J[i].n_par
+
+    Jb = np.concatenate([J[i].right_multiply(np.concatenate([b[:row_indices_b[0]], b[row_indices_b[i]:row_indices_b[i + 1]]])) for i in range(len(J))])
+    out = qr_lstsq_bvp_multi_shared_k_1(J, Jb, J_LQ, Jk_factor)
+
+    return b - out[0], out[1], J_and_factor 
+
+@jax.jit
 def low_rank_spd_factor(U):
     
     Q, R = np.linalg.qr(U)

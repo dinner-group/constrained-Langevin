@@ -394,6 +394,44 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
+
+@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
+    
+    if J_and_factor is None:
+        J_and_factor = (jac_prev, tuple(J_i.lq_factor() for J_i in jac_prev))
+
+    J_LQ = J_and_factor[1]
+    Jk_factor = linear_solver.factor_bvpjac_k_multi_shared_k_1(jac_prev, J_LQ)
+
+    dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+    x = x + dx
+    v, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+    projection2 = v.T@dx / (dx.T@dx)
+    contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+    dx_prev = dx
+    dx = v / (1 - projection2)
+
+    def cond(carry):
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx, dx_prev, projection2, contraction_factor = carry
+        x = x + dx
+        v, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
+        v = v + projection1 * dx
+        projection2 = v.T@dx / (dx.T@dx)
+        contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
+        dx_prev = dx
+        dx = v / (1 - projection2)
+        return x, step + 1, dx, dx_prev, projection2, contraction_factor
+
+    init = (x, 1, dx, dx_prev, projection2, contraction_factor)
+    x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
+    return x, np.all(np.abs(dx) < tol), n_iter
+
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
 def quasi_newton_bvp_symm_broyden_resid(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, max_memory=20, J_and_factor=None, *args, **kwargs):
    
