@@ -275,12 +275,12 @@ def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_a
     def loop_body(i, carry):
         vars_to_save, vars_to_discard, n_accept, out = carry
         vars_to_save, vars_to_discard, accept = stepper(*vars_to_save, *vars_to_discard, dt=dt, potential=potential, *args, **kwargs)
-        vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
+        vars_to_save_flatten = np.concatenate([x.ravel() for x in jax.tree_util.tree_flatten(vars_to_save)[0]])
         out = jax.lax.dynamic_update_slice(out, np.expand_dims(vars_to_save_flatten, 0), (i // thin, 0))
         return vars_to_save, vars_to_discard, n_accept + accept, out
 
     vars_to_save, vars_to_discard, accept = stepper(*dynamic_vars, dt=dt, potential=potential, *args, **kwargs)
-    vars_to_save_flatten = jax.flatten_util.ravel_pytree(vars_to_save)[0]
+    vars_to_save_flatten = np.concatenate([x.ravel() for x in jax.tree_util.tree_flatten(vars_to_save)[0]])
     out = np.full((n_steps // thin, vars_to_save_flatten.size), np.nan)
     out = out.at[0].set(vars_to_save_flatten)
     n_accept = 0 + accept
