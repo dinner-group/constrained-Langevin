@@ -346,7 +346,7 @@ def periodic_bvp_mm_colloc_jac_multi_eqn_shared_k(q, ode_models, colloc_points_u
             for i in range(len(ode_models)))
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
-def bvp_mm_colloc_resid_multi_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4):
+def bvp_mm_colloc_resid_multi_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4, **kwargs):
 
     if colloc_points_unshifted is None:
         colloc_points_unshifted = tuple(util.gauss_points_4 for _ in ode_models)
@@ -364,7 +364,7 @@ def bvp_mm_colloc_resid_multi_shared_k(q, ode_models, colloc_points_unshifted=No
                            n_mesh_intervals=n_mesh_intervals[i], n_smooth=n_smooth) for i in range(len(ode_models))])
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
-def bvp_mm_colloc_jac_multi_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4):
+def bvp_mm_colloc_jac_multi_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4, **kwargs):
 
     if colloc_points_unshifted is None:
         colloc_points_unshifted = tuple(util.gauss_points_4 for _ in ode_models)
