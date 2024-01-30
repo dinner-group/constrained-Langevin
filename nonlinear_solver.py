@@ -432,6 +432,50 @@ def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
+@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+def quasi_newton_bvp_multi_shared_k_symm_1(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
+    
+    if J_and_factor is None:
+        J_and_factor = (jac_prev, tuple(J_i.lq_factor() for J_i in jac_prev))
+
+    J_LQ = J_and_factor[1]
+    Jk_factor = linear_solver.factor_bvpjac_k_multi_shared_k_1(jac_prev, J_LQ)
+    dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+
+    def cond(carry):
+        x, step, dx = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx = carry
+        x = x + dx
+        dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        return x, step + 1, dx
+
+    init = (x, 1, dx)
+    x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
+    return x, np.all(np.abs(dx) < tol), n_iter
+
+@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+def gauss_newton_bvp_multi_shared_k_1(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, *args, **kwargs):
+    
+    def cond(carry):
+        x, step, dx = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx = carry
+        J = jac(x, *args, **kwargs)
+        J_LQ = tuple(J_i.lq_factor() for J_i in J)
+        Jk_factor = linear_solver.factor_bvpjac_k_multi_shared_k_1(J, J_LQ)
+        dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(J, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        x = x + dx
+        return x, step + 1, dx
+
+    init = (x, 0, np.full_like(x, np.inf))
+    x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
+    return x, np.all(np.abs(dx) < tol), n_iter
+
 @partial(jax.jit, static_argnums=(1, 3, 5, 6))
 def quasi_newton_bvp_symm_broyden_resid(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, max_memory=20, J_and_factor=None, *args, **kwargs):
    
