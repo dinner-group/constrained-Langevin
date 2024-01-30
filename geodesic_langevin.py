@@ -72,7 +72,7 @@ def rattle_kick(position, momentum, energy=None, force=None, dt=None, potential=
 
     return position, momentum_new, lagrange_multiplier_new, energy, force, J_and_factor
 
-@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "reversibility_tol"))
+@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol"))
 def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, J_and_factor=None, linsol=linear_solver.qr_ortho_proj, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, reversibility_tol=None, *args, inverse_mass=None, **kwargs):
 
     if jac_constraint is None:
@@ -239,7 +239,7 @@ def BAOAB(q, p, energy=None, force=None, prng_key=jax.random.PRNGKey(0), dt=1e-2
 
     return vars_to_save, (), accept
 
-@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
+@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "metropolize"))
 def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
              linsol=linear_solver.qr_ortho_proj, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
 
@@ -279,7 +279,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
 
     return vars_to_save, vars_to_discard, accept
 
-@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
+@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "metropolize"))
 def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
              linsol=linear_solver.qr_ortho_proj, nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
 
@@ -318,7 +318,7 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
 
     return vars_to_save, vars_to_discard, accept
 
-@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
+@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "metropolize"))
 def gEuler_Maruyama(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, potential=None, constraint=None, jac_constraint=None, linsol=linear_solver.qr_ortho_proj, 
                       nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
     
@@ -336,7 +336,6 @@ def gEuler_Maruyama(position, momentum, lagrange_multiplier, energy=None, force=
     prng_key, subkey = jax.random.split(prng_key)
     momentum_new = jax.random.normal(subkey, momentum.shape) - dt * force
     momentum_new, lagrange_multiplier_new, J_and_factor_new = linsol(J_and_factor[0], momentum_new, J_and_factor)
-    jax.debug.print("{}", momentum_new)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success\
         = rattle_drift(position, momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     force_new = jax.jacrev(potential)(position_new, *args, **kwargs)
@@ -358,7 +357,7 @@ def gEuler_Maruyama(position, momentum, lagrange_multiplier, energy=None, force=
     return vars_to_save, vars_to_discard, accept
 
 
-@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance", "n_mesh_intervals", "n_smooth", "phase_condition"))
+@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "metropolize", "print_acceptance", "n_mesh_intervals", "n_smooth", "phase_condition"))
 def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_acceptance=False, **kwargs):
 
     def loop_body(i, carry):

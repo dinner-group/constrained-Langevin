@@ -140,7 +140,7 @@ def quasi_newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_qn_
 
     return jax.lax.cond(np.all(np.abs(dx) < tol), lambda x: (x, True, step), lambda x:newton_rattle(x, resid, jac_prev, jac, inverse_mass, max_newton_iter, tol, *args, **kwargs), x)
 
-@partial(jax.jit, static_argnums=(1, 3, 5, 6))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def quasi_newton_rattle_symm_broyden(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
 
     if inverse_mass is None:
@@ -288,7 +288,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
     
     if inverse_mass is None:
@@ -335,7 +335,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnums=(1, 3, 5, 6))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
     
     if inverse_mass is None:
@@ -395,7 +395,7 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
     return x, np.all(np.abs(dx) < tol), n_iter
 
 
-@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
     
     if J_and_factor is None:
@@ -432,7 +432,7 @@ def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def quasi_newton_bvp_multi_shared_k_symm_1(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
     
     if J_and_factor is None:
@@ -456,7 +456,7 @@ def quasi_newton_bvp_multi_shared_k_symm_1(x, resid, jac_prev, jac, max_iter=100
     x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def gauss_newton_bvp_multi_shared_k_1(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, *args, **kwargs):
     
     def cond(carry):
@@ -551,7 +551,7 @@ def quasi_newton_bvp_symm_broyden_resid(x, resid, jac_prev, jac, inverse_mass=No
     x, n_iter, dx, dx_prev, projection2, contraction_factor = jax.lax.while_loop(cond, loop_body, init)
     return x, np.all(np.abs(dx) < tol), n_iter
 
-@partial(jax.jit, static_argnames=("resid", "jac", "max_iter", "tol"))
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def gauss_newton(x, resid, jac=None, max_iter=20, tol=1e-9, *args, **kwargs):
 
     if jac is None:
