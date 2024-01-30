@@ -159,7 +159,6 @@ def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, 
         
     return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, args_new, success & np.all(position_0 - position_new < constraint_tol) & np.all(mesh_0 - mesh_new < constraint_tol)
 
-
 @partial(jax.jit, static_argnames=("constraint", "jac_constraint", "linsol"))
 def rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_constraint=None, J_and_factor=None, linsol=linear_solver.qr_ortho_proj, *args, temperature=1, inverse_mass=None, **kwargs):
 
@@ -175,7 +174,7 @@ def rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_con
     noise_scale = np.sqrt(temperature * (1 - drag**2))
     
     prng_key, subkey = jax.random.split(prng_key)
-    W = jax.random.normal(prng_key, momentum.shape)
+    W = jax.random.normal(subkey, momentum.shape)
 
     if inverse_mass is None:
         W = noise_scale * W
@@ -189,6 +188,56 @@ def rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_con
     momentum_new = drag * momentum + W
 
     return position, momentum_new, lagrange_multiplier_new, J_and_factor, prng_key
+
+@jax.jit
+def position_update(q, p, dt, *args, sqrtHinv=None, **kwargs):
+
+    if sqrtHinv is None:
+        q = q + dt * p
+    else:
+        q = q + dt * sqrtHinv@p
+    return q
+
+@partial(jax.jit, static_argnames=("potential",))
+def momentum_update(q, p, energy=None, force=None, dt=1e-2, potential=lambda q:0., *args, sqrtHinv=None, **kwargs):
+        
+    if energy is None:
+        energy = potential(q, *args, **kwargs)
+    if force is None:
+        force = -jax.jacrev(potential)(q, *args, **kwargs)
+    if sqrtHinv is None:
+        p = p + dt * force
+    else:
+        p = p + dt * sqrtHinv.T@force
+    return p, energy, force
+
+@jax.jit
+def momentum_noise(p, dt, prng_key, friction=0., temperature=1, *args, **kwargs):
+    
+    a = np.exp(-friction * dt)
+    prng_key, subkey = jax.random.split(prng_key)
+    return a * p + np.sqrt(temperature * (1 - a**2)) * jax.random.normal(subkey, p.shape), prng_key
+
+@partial(jax.jit, static_argnames=("potential", "metropolize"))
+def BAOAB(q, p, energy=None, force=None, prng_key=jax.random.PRNGKey(0), dt=1e-2, friction=0., temperature=1, potential=lambda q:0., *args, metropolize=False, **kwargs):
+
+    p_new, energy, force = momentum_update(q, p, energy, force, dt / 2, potential, *args, **kwargs)
+    q_new = position_update(q, p_new, dt / 2, *args, **kwargs)
+    p_new, prng_key = momentum_noise(p_new, dt, prng_key, friction, temperature, *args, **kwargs)
+    q_new = position_update(q_new, p_new, dt / 2, *args, **kwargs)
+    p_new, energy_new, force_new = momentum_update(q_new, p_new, dt=dt / 2, potential=potential, *args, **kwargs)
+    accept = True
+
+    if metropolize:
+        prng_key, subkey = jax.random.split(prng_key)
+        u = jax.random.uniform(subkey)
+        H_0 = p@p / 2 + energy
+        H = p_new@p_new / 2 + energy_new
+        accept = (H_0 - H > np.log(u))
+
+    vars_to_save = jax.lax.cond(accept, lambda:(q_new, p_new, energy_new, force_new, prng_key), lambda:(q, -p, energy, force, prng_key))
+
+    return vars_to_save, (), accept
 
 @partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
 def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, friction=1, potential=None, constraint=None, jac_constraint=None, 
@@ -245,7 +294,6 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
 
     prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
-    accept = True
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
@@ -254,6 +302,7 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, None, None, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position_new, momentum_new, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
+    accept = success
 
     if metropolize:
         prng_key, subkey = jax.random.split(prng_key)
@@ -268,6 +317,46 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
                                                  lambda:((position, -momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
 
     return vars_to_save, vars_to_discard, accept
+
+@partial(jax.jit, static_argnames=("potential", "constraint", "jac_constraint", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol"))
+def gEuler_Maruyama(position, momentum, lagrange_multiplier, energy=None, force=None, prng_key=None, J_and_factor=None, dt=None, potential=None, constraint=None, jac_constraint=None, linsol=linear_solver.qr_ortho_proj, 
+                      nlsol=nonlinear_solver.newton_rattle, max_newton_iter=20, constraint_tol=1e-9, *args, metropolize=False, reversibility_tol=None, inverse_mass=None, **kwargs):
+    
+    if jac_constraint is None:
+        jac_constraint = jax.jacfwd(constraint)
+    if energy is None:
+        energy = potential(position, *args, **kwargs)
+    if force is None:
+        force = jax.jacrev(potential)(position, *args, **kwargs)
+    if J_and_factor is None:
+        Jcons = jac_constraint(position, *args, **kwargs)
+        _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
+
+    prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
+    prng_key, subkey = jax.random.split(prng_key)
+    momentum_new = jax.random.normal(subkey, momentum.shape) - dt * force
+    momentum_new, lagrange_multiplier_new, J_and_factor_new = linsol(J_and_factor[0], momentum_new, J_and_factor)
+    jax.debug.print("{}", momentum_new)
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success\
+        = rattle_drift(position, momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
+    force_new = jax.jacrev(potential)(position_new, *args, **kwargs)
+    energy_new = potential(position_new, *args, **kwargs)
+    accept = success
+
+    if metropolize:
+        prng_key, subkey = jax.random.split(prng_key)
+        u = jax.random.uniform(subkey)
+        H_0 = kinetic(momentum, inverse_mass) + energy
+        H = kinetic(momentum_new, inverse_mass) + energy_new
+        accept = (H_0 - H > np.log(u))
+
+    accept = accept & success
+    vars_to_save, vars_to_discard = jax.lax.cond(accept, 
+                                                 lambda:((position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, prng_key.view(np.float64)), (J_and_factor_new,)), 
+                                                 lambda:((position, -momentum, lagrange_multiplier, energy, force, prng_key.view(np.float64)), (J_and_factor,)))
+
+    return vars_to_save, vars_to_discard, accept
+
 
 @partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "max_newton_iter", "constraint_tol", "metropolize", "reversibility_tol", "print_acceptance", "n_mesh_intervals", "n_smooth", "phase_condition"))
 def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_acceptance=False, **kwargs):
