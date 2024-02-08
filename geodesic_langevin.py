@@ -99,11 +99,11 @@ def rattle_drift(position, momentum, lagrange_multiplier, dt, potential, constra
     momentum_new, lagrange_multiplier_new, J_and_factor_new = linsol(Jcons, momentum_new, None, inverse_mass)
 
     if reversibility_tol is not None:
-        position_rev, momentum_rev, lagrange_multiplier_rev, _, success_rev = rattle_drift(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, 
+        position_rev, momentum_rev, lagrange_multiplier_rev, _, success_rev, n_iter_rev = rattle_drift(position_new, -momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, 
                                                                                            linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol=None, *args, inverse_mass=inverse_mass, **kwargs)
         success = success & success_rev & np.all(np.abs(position - position_rev) < reversibility_tol)
 
-    return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success
+    return position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter
 
 @partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12, 13, 14))
 def rattle_drift_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None,
@@ -257,10 +257,10 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     accept = True
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success\
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position_new, momentum_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success\
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position_new, momentum_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, None, None, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
@@ -297,7 +297,7 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success\
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position_new, momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, None, None, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
@@ -336,7 +336,7 @@ def gEuler_Maruyama(position, momentum, lagrange_multiplier, energy=None, force=
     prng_key, subkey = jax.random.split(prng_key)
     momentum_new = jax.random.normal(subkey, momentum.shape) - dt * force
     momentum_new, lagrange_multiplier_new, J_and_factor_new = linsol(J_and_factor[0], momentum_new, J_and_factor)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success\
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position, momentum_new, lagrange_multiplier_new, dt, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     force_new = jax.jacrev(potential)(position_new, *args, **kwargs)
     energy_new = potential(position_new, *args, **kwargs)
