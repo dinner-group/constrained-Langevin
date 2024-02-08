@@ -39,7 +39,7 @@ def log_probability(k, rp_dim):
     E -= 100 * np.where(k[:-rp_dim] < -5, (k[:-rp_dim] + 5)**2, 0.).sum()
 
     try:
-        traj = scipy.integrate.solve_ivp(rp.f, jac=rp.jac, y0=np.log(np.ones(rp_dim).at[-2].add(0.2)), t_span=(0, 30), t_eval=t_eval, args=(k,), method="LSODA", rtol=1e-6)
+        traj = scipy.integrate.solve_ivp(rp.f, jac=rp.jac, y0=np.log(np.ones(rp_dim).at[-2].add(0.2)), t_span=(0, 30), t_eval=t_eval, args=(k,), method="Radau", rtol=1e-6)
     except ValueError:
         return -np.inf
 
