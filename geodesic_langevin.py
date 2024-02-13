@@ -258,10 +258,10 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position, momentum, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
-        = rattle_drift(position_new, momentum_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
+        = rattle_drift(position_new, momentum_new, lagrange_multiplier_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
-        = rattle_drift(position_new, momentum_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
+        = rattle_drift(position_new, momentum_new, lagrange_multiplier_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, None, None, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
 
