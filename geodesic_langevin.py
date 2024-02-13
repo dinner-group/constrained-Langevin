@@ -170,7 +170,7 @@ def rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_con
     else:
         Jcons = J_and_factor[0]
 
-    drag = np.exp(-friction * dt)
+    drag = np.exp(-friction * np.abs(dt))
     noise_scale = np.sqrt(temperature * (1 - drag**2))
     
     prng_key, subkey = jax.random.split(prng_key)
