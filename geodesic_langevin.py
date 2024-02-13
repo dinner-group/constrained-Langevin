@@ -256,7 +256,7 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
     prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
     accept = True
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
-        = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
+        = rattle_kick(position, momentum, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position_new, momentum_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
@@ -357,7 +357,7 @@ def gEuler_Maruyama(position, momentum, lagrange_multiplier, energy=None, force=
     return vars_to_save, vars_to_discard, accept
 
 
-@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepper", "nlsol", "linsol", "metropolize", "print_acceptance", "n_mesh_intervals", "n_smooth", "phase_condition"))
+@partial(jax.jit, static_argnames=("n_steps", "thin", "potential", "constraint", "jac_constraint", "stepsize_monitor", "stepper", "nlsol", "linsol", "metropolize", "print_acceptance", "n_mesh_intervals", "n_smooth", "phase_condition"))
 def sample(dynamic_vars, dt, n_steps, potential, stepper, *args, thin=1, print_acceptance=False, **kwargs):
 
     def loop_body(i, carry):
