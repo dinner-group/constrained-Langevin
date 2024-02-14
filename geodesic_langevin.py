@@ -204,11 +204,11 @@ def momentum_update(q, p, energy=None, force=None, dt=1e-2, potential=lambda q:0
     if energy is None:
         energy = potential(q, *args, **kwargs)
     if force is None:
-        force = -jax.jacrev(potential)(q, *args, **kwargs)
+        force = jax.jacrev(potential)(q, *args, **kwargs)
     if sqrtHinv is None:
-        p = p + dt * force
+        p = p - dt * force
     else:
-        p = p + dt * sqrtHinv.T@force
+        p = p - dt * sqrtHinv.T@force
     return p, energy, force
 
 @jax.jit
@@ -247,11 +247,12 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         jac_constraint = jax.jacfwd(constraint)
     if energy is None:
         energy = potential(position, *args, **kwargs)
-    if force is None:
-        force = jax.jacrev(potential)(position, *args, **kwargs)
     if J_and_factor is None:
         Jcons = jac_constraint(position, *args, **kwargs)
         _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
+    if force is None:
+        force = jax.jacrev(potential)(position, *args, **kwargs)
+        force = linsol(Jcons, force, J_and_factor, inverse_mass=inverse_mass)[0]
 
     prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
     accept = True
@@ -287,11 +288,12 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         jac_constraint = jax.jacfwd(constraint)
     if energy is None:
         energy = potential(position, *args, **kwargs)
-    if force is None:
-        force = jax.jacrev(potential)(position, *args, **kwargs)
     if J_and_factor is None:
         Jcons = jac_constraint(position, *args, **kwargs)
         _, _, J_and_factor = linsol(Jcons, momentum, inverse_mass=inverse_mass)
+    if force is None:
+        force = jax.jacrev(potential)(position, *args, **kwargs)
+        force = linsol(Jcons, force, J_and_factor, inverse_mass=inverse_mass)[0]
 
     prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
