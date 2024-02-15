@@ -256,11 +256,13 @@ def gBAOAB(position, momentum, lagrange_multiplier, energy=None, force=None, prn
 
     prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
     accept = True
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new = position, momentum, lagrange_multiplier, J_and_factor
+
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
-        = rattle_kick(position, momentum, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
+        = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position_new, momentum_new, lagrange_multiplier_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position_new, momentum_new, prng_key, dt, friction, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
         = rattle_drift(position_new, momentum_new, lagrange_multiplier_new, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, nlsol, max_newton_iter, constraint_tol, reversibility_tol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
@@ -296,7 +298,9 @@ def gOBABO(position, momentum, lagrange_multiplier, energy=None, force=None, prn
         force = linsol(Jcons, force, J_and_factor, inverse_mass=inverse_mass)[0]
 
     prng_key = prng_key.view(jax.random.PRNGKey(0).dtype)
-    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position, momentum, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor, linsol, *args, **kwargs)
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new = position, momentum, lagrange_multiplier, J_and_factor
+
+    position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, prng_key = rattle_noise(position_new, momentum_new, prng_key, dt / 2, friction, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, energy_new, force_new, J_and_factor_new\
         = rattle_kick(position_new, momentum_new, energy, force, dt / 2, potential, constraint, jac_constraint, J_and_factor_new, linsol, *args, **kwargs)
     position_new, momentum_new, lagrange_multiplier_new, J_and_factor_new, success, n_iter\
