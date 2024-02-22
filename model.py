@@ -1143,6 +1143,41 @@ class Pharyngeal_Minimal_Syn:
     def _tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
 
+class Cubic_System_2d:
+    
+    n_dim = 2
+    n_par = 17
+    n_conserve = 0
+    not_algebraic = 1
+    K = np.array([[1, 0, 2, 1, 0, 3, 2, 1, 0],  
+                  [0, 1, 0, 1, 2, 0, 1, 2, 3]])
+        
+    def __init__(self, par, **kwargs):
+        self.par = par.ravel(order="C")
+        
+    @jax.jit
+    def f(self, t, y, par=None):
+        if par is None:
+            par = self.par
+        par = np.pad(par, (1, 0), constant_values=1)
+        par = np.reshape(par, (2, par.size // 2))
+        return par@np.prod(y**self.K.T, axis=1)
+    
+    @jax.jit
+    def jac(self, t, y, par=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, par)
+    
+    def _tree_flatten(self):
+        
+        children = (self.par,)
+        aux_data = {}
+        return children, aux_data
+        
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        
+        return cls(*children, **aux_data)  
+    
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_log, KaiABC_log._tree_flatten, KaiABC_log._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_nondim, KaiABC_nondim._tree_flatten, KaiABC_nondim._tree_unflatten)
@@ -1156,3 +1191,4 @@ jax.tree_util.register_pytree_node(Morris_Lecar_log_nondim, Morris_Lecar_log_non
 jax.tree_util.register_pytree_node(Pharyngeal_Minimal_Syn, Pharyngeal_Minimal_Syn._tree_flatten, Pharyngeal_Minimal_Syn._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log, Repressilator_log._tree_flatten, Repressilator_log._tree_unflatten)
 jax.tree_util.register_pytree_node(Repressilator_log_n, Repressilator_log_n._tree_flatten, Repressilator_log_n._tree_unflatten)
+jax.tree_util.register_pytree_node(Cubic_System_2d, Cubic_System_2d._tree_flatten, Cubic_System_2d._tree_unflatten)
