@@ -51,8 +51,35 @@ def newton_polynomial(t, node_t, node_y, dd=None):
     
     if dd is None:
         dd = divided_difference(node_t, node_y)
-        
+
     return np.sum(np.cumprod(np.roll(t - node_t, 1).at[0].set(1)) * dd[np.diag_indices(node_t.size)].T, axis=1)
+
+@partial(jax.jit, static_argnames=("n_derivs",))
+def newton_polynomial_1(t, node_t, node_y, dd=None, n_derivs=0):
+    
+    if n_derivs > node_t.size:
+        n_derivs = node_t.size - 1
+    if dd is None:
+        dd = util.divided_difference(node_t, node_y)
+
+    def loop_inner(j, carry):
+        poly, ind_i = carry
+        ind_j = n_derivs - j
+        poly = poly.at[ind_j].set((t - node_t[ind_i]) * poly[ind_j] + ind_j * poly[ind_j - 1])
+        return poly, ind_i
+        
+    def loop_outer(i, poly):
+        ind_i = node_t.size - 2 - i
+        poly = jax.lax.fori_loop(0, n_derivs, loop_inner, (poly, ind_i))[0]
+        poly = poly.at[0].set(dd[ind_i, ind_i] + (t - node_t[ind_i]) * poly[0])
+        return poly
+    
+    out = jax.lax.fori_loop(0, node_t.size - 1, loop_outer, np.pad(np.expand_dims(dd[node_t.size - 1, node_t.size - 1], 0), ((0, n_derivs), (0, 0))))
+    
+    if n_derivs == 0:
+        out = out[0]
+    
+    return out
 
 @partial(jax.jit, static_argnums=1)
 def weighted_average_smoothing(x, n_smooth=4):
@@ -110,26 +137,26 @@ def recompute_mesh(y, mesh_old, colloc_points_unshifted=gauss_points_4, n_smooth
     return mesh_new, mesh_density
 
 @jax.jit
-def recompute_node_y(y, mesh_old, mesh_new, gauss_points_4=gauss_points_4):
+def recompute_node_y(y, mesh_old, mesh_new, colloc_points_unshifted=gauss_points_4):
 
-    t_eval = fill_mesh(mesh_new, gauss_points_4)
-    y_interp = interpolate(y, mesh_old, t_eval[1:-1], gauss_points_4)
+    t_eval = fill_mesh(mesh_new, colloc_points_unshifted)
+    y_interp = interpolate(y, mesh_old, t_eval[1:-1], colloc_points_unshifted)
     return np.hstack([y[:, :1], y_interp, y[:, -1:]])
 
 @jax.jit
-def interpolate(y, mesh_points, t_eval, gauss_points_4=gauss_points_4):
+def interpolate(y, mesh_points, t_eval, colloc_points_unshifted=gauss_points_4):
     
     def loop1(i, _):
-        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points_4.size + 1)
-        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points_4.size,), (y.shape[0], gauss_points_4.size + 1))
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), colloc_points_unshifted.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0 * i, i * colloc_points_unshifted.size,), (y.shape[0], colloc_points_unshifted.size + 1))
         return i + 1, divided_difference(meshi, yi)
         
     dd = jax.lax.scan(loop1, init=0, xs=None, length=mesh_points.size - 1)[1]
         
     def loop2(_, t):
         i = np.maximum(np.searchsorted(mesh_points, t) - 1, 0)
-        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), gauss_points_4.size + 1)
-        yi = jax.lax.dynamic_slice(y, (0 * i, i * gauss_points_4.size,), (y.shape[0], gauss_points_4.size + 1))
+        meshi = np.linspace(*jax.lax.dynamic_slice(mesh_points, (i,), (2,)), colloc_points_unshifted.size + 1)
+        yi = jax.lax.dynamic_slice(y, (0 * i, i * colloc_points_unshifted.size,), (y.shape[0], colloc_points_unshifted.size + 1))
         return _, newton_polynomial(t, meshi, yi, dd[i])
     
     _, y_interp = jax.lax.scan(loop2, init=None, xs=t_eval)
