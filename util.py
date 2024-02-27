@@ -9,7 +9,7 @@ lobatto_points_3 = np.array([-1, 0, 1])
 gauss_points_2 = np.array([-np.sqrt(1/3), np.sqrt(1/3)])
 gauss_points_3 = np.array([-np.sqrt(3/5), 0, np.sqrt(3/5)])
 gauss_points_4 = np.array([-np.sqrt(3/7 + (2/7) * np.sqrt(6/5)), -np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 + (2/7) * np.sqrt(6/5))])
-gauss_weights = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
+gauss_weights_4 = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
 
 @jax.jit
 def smooth_max(x, smooth_max_temperature=1):
