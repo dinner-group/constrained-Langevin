@@ -169,8 +169,6 @@ def kai_bvp_potential_mm_4cond(q, ode_models, colloc_points_unshifted=None, n_me
     if n_mesh_intervals is None:
         n_mesh_intervals = tuple(60 for _ in range(len(ode_models)))
 
-    obs_kai_ab = obs2_scaled
-    obs_kai_phos = np.hstack([obs_phos2_scaled, obs_phos3_scaled])
     k = q[:ode_models[0].n_par]
     start = ode_models[0].n_par
     E = np.where(np.abs(k) > 7, 100 * (np.abs(k) - 7)**2 / 2, 0).sum()
@@ -367,7 +365,7 @@ friction = 1e-1
 n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
 x = np.load("kai_lc_%d_%d.npy"%(argp.iter - 1, argp.process))[-1]
 
-n_steps = 10000
+n_steps = 20000
 thin = 100
 
 #kai = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par))
@@ -427,19 +425,19 @@ kai06 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=6/35)
 kai12 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=12/35)
 kai18 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), a0=18/35)
 kai_ATPfrac025 = model.KaiABC_nondim(par=np.zeros(model.KaiABC_nondim.n_par), ATPfrac=0.25)
-prng_key = x[-1]
-q0 = x[:kai06.n_par + 3 * (kai06.n_dim * n_points + n_mesh_intervals)]
-p0 = x[q0.size:2 * q0.size] 
+prng_key = x[-1:]
+q0 = x[:kai06.n_par + 4 * (kai06.n_dim * n_points + n_mesh_intervals)]
 ode_models = (kai06, kai12, kai18, kai_ATPfrac025)
+p0 = x[q0.size:2 * q0.size] 
 colloc_points_unshifted = tuple(colloc_points_unshifted for _ in range(4))
 n_mesh_intervals = tuple(60 for _ in range(4))
 potential = partial(kai_bvp_potential_mm_4cond, n_mesh_intervals=n_mesh_intervals)
-resid = partial(defining_systems.periodic_bvp_mm_colloc_resid_multi_eqn_shared_k, n_mesh_intervals=n_mesh_intervals)
-jac = partial(defining_systems.periodic_bvp_mm_colloc_jac_multi_eqn_shared_k, n_mesh_intervals=n_mesh_intervals)
+resid = partial(defining_systems.bvp_mm_colloc_resid_multi_shared_k, n_mesh_intervals=n_mesh_intervals)
+jac = partial(defining_systems.bvp_mm_colloc_jac_multi_shared_k, n_mesh_intervals=n_mesh_intervals)
 nlsol = nonlinear_solver.quasi_newton_bvp_multi_shared_k_symm_broyden_1
 linsol = linear_solver.qr_ortho_proj_bvp_multi_shared_k_1
 n_constraints = resid(q0, ode_models=ode_models).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-traj_kai_lc, key_lc = lgvn.sample((q0, p0, l0, None, None, prng_key), dt, friction, n_steps, thin=thin, potential=potential, constraint=resid, jac_constraint=jac, nlsol=nlsol, linsol=linsol, max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=False, reversibility_tol=1e-6)
+traj_kai_lc = lgvn.sample((q0, p0, l0, None, None, prng_key), dt, n_steps, friction=friction, thin=thin, potential=potential, stepper=lgvn.gOBABO, constraint=resid, jac_constraint=jac, nlsol=nlsol, linsol=linsol, max_newton_iter=100, constraint_tol=1e-9, metropolize=False, reversibility_tol=1e-6, ode_models=ode_models, colloc_points_unshifted=colloc_points_unshifted, print_acceptance=True)
 
 np.save("kai_lc_%d_%d.npy"%(argp.iter, argp.process), traj_kai_lc)
