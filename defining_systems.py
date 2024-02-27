@@ -361,7 +361,7 @@ def bvp_mm_colloc_resid_multi_shared_k(q, ode_models, colloc_points_unshifted=No
         y_indices[i + 1] = y_indices[i] + ode_models[i].n_dim * (n_mesh_intervals[i] * colloc_points_unshifted[i].size + 1) + n_mesh_intervals[i]
 
     return np.concatenate([bvp_mm_colloc_resid(np.concatenate([q[:ode_models[0].n_par], q[y_indices[i]:y_indices[i + 1]]]), ode_models[i], colloc_points_unshifted[i], *args, 
-                           n_mesh_intervals=n_mesh_intervals[i], n_smooth=n_smooth) for i in range(len(ode_models))])
+                           n_mesh_intervals=n_mesh_intervals[i], n_smooth=n_smooth, **kwargs) for i in range(len(ode_models))])
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
 def bvp_mm_colloc_jac_multi_shared_k(q, ode_models, colloc_points_unshifted=None, *args, n_mesh_intervals=None, n_smooth=4, **kwargs):
