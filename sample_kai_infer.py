@@ -162,10 +162,12 @@ def kai_bvp_potential_mm_multi(q, ode_models, colloc_points_unshifted=(util.gaus
     return E
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals"))
-def kai_bvp_potential_mm_4cond(q, ode_models, colloc_points_unshifted=None, n_mesh_intervals=None):
+def kai_bvp_potential_mm_4cond(q, ode_models, colloc_points_unshifted=None, quadrature_weights=None, n_mesh_intervals=None):
    
     if colloc_points_unshifted is None:
         colloc_points_unshifted = tuple(util.gauss_points_4 for _ in range(len(ode_models)))
+    if quadrature_weights is None:
+        quadrature_weights = tuple(util.gauss_weights_4 for _ in range(len(ode_models)))
     if n_mesh_intervals is None:
         n_mesh_intervals = tuple(60 for _ in range(len(ode_models)))
 
@@ -200,6 +202,11 @@ def kai_bvp_potential_mm_4cond(q, ode_models, colloc_points_unshifted=None, n_me
         min_arclength = 0.3
         arclength = np.linalg.norm(y[:, 1:] - y[:, :-1], axis=0).sum()
         E += np.where(arclength < min_arclength, (min_arclength / (np.sqrt(2) * arclength))**4 - (min_arclength / (np.sqrt(2) * arclength))**2 + 1 / 4, 0)
+
+        ynorm, yderiv2 = util.curvature(y, colloc_points_unshifted[i], quadrature_weights[i])
+        max_curvature = 0
+        y_curvature = yderiv2.sum() / ynorm.sum()
+        E += np.where(y_curvature > max_curvature, 100 * (y_curvature - max_curvature)**2, 0)
                 
     t_ab = np.linspace(0, 1, obs_kai_ab.shape[0])
     n_points = n_mesh_intervals[0] * colloc_points_unshifted[0].size + 1
