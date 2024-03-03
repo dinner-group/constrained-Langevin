@@ -60,7 +60,7 @@ def newton_polynomial_1(t, node_t, node_y, dd=None, n_derivs=0):
     if n_derivs > node_t.size:
         n_derivs = node_t.size - 1
     if dd is None:
-        dd = util.divided_difference(node_t, node_y)
+        dd = divided_difference(node_t, node_y)
 
     def loop_inner(j, carry):
         poly, ind_i = carry
@@ -161,6 +161,30 @@ def interpolate(y, mesh_points, t_eval, colloc_points_unshifted=gauss_points_4):
     
     _, y_interp = jax.lax.scan(loop2, init=None, xs=t_eval)
     return y_interp.T
+
+@jax.jit
+def curvature_interval(y, colloc_points_unshifted=gauss_points_4):
+
+    colloc_points = 1 + colloc_points_unshifted
+    node_points = np.linspace(0, 1, colloc_points.size + 1)
+    dd = divided_difference(node_points, y)
+    poly = jax.vmap(newton_polynomial, (0, None, None, None))(colloc_points, node_points, y, dd)
+    poly_deriv2 = jax.vmap(jax.jacfwd(jax.jacfwd(newton_polynomial)), (0, None, None, None))(colloc_points, node_points, y, dd)
+    return poly.T, poly_deriv2.T
+
+@jax.jit
+def curvature(y, colloc_points_unshifted=gauss_points_4, quadrature_weights=gauss_weights_4):
+
+    def loop_body(i, carry):
+        
+        ynorm, ycurvature = carry
+        poly, poly_deriv2 = curvature_interval(jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (y.shape[0], colloc_points_unshifted.size + 1)), colloc_points_unshifted)
+        ynorm = ynorm.at[i].set(np.linalg.norm(poly, axis=0)@quadrature_weights)
+        ycurvature = ycurvature.at[i].set(np.linalg.norm(poly_deriv2, axis=0)@quadrature_weights)
+        return ynorm, ycurvature
+    
+    out_size = y.shape[1] // colloc_points_unshifted.size
+    return jax.lax.fori_loop(0, out_size, loop_body, (np.zeros(out_size), np.zeros(out_size)))
 
 @partial(jax.jit, static_argnums=(1, 2))
 def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
@@ -1052,26 +1076,32 @@ class BVPMMJac_LQ_1:
 
         return x
 
-    @jax.jit
-    def Q_multiply(self, v):
+    @partial(jax.jit, static_argnames=("transpose",))
+    def Q_multiply(self, v, transpose=False):
 
         is_vector = len(v.shape) == 1
         if is_vector:
             v = np.expand_dims(v, 1)
 
-        pad_width = self.Rc.shape[0] + self.n_dim - self.Rbc.shape[1]
-        v = np.pad(v, ((0, pad_width), (0, 0)))
-        v = v.at[-self.Qbc.shape[0]:].set(self.Qbc@v[v.shape[0] - self.Qbc.shape[1] - pad_width:v.shape[0] - pad_width])
-
         def loop_body(carry, _):
             i, v = carry
             v_i = jax.lax.dynamic_slice(v, (i * self.Rc.shape[2], 0), (self.h_c.shape[2], v.shape[1]))
-            v_i = Q_multiply_from_reflectors(self.h_c[i], self.tau_c[i], v_i, transpose=False)
+            v_i = Q_multiply_from_reflectors(self.h_c[i], self.tau_c[i], v_i, transpose=transpose)
             v = jax.lax.dynamic_update_slice(v, v_i, (i * self.Rc.shape[2], 0))
-            return (i - 1, v), _
+            return (i + np.where(transpose, 1, -1), v), _
 
-        v = jax.lax.scan(loop_body, init=(self.h_c.shape[0] - 1, v), xs=None, length=self.h_c.shape[0])[0][1]
-        v = unpermute_q_mesh_1(v.T, self.n_dim, self.Rc.shape[0], self.colloc_points_unshifted).T
+        pad_width = self.Qbc.shape[0] - self.Qbc.shape[1]
+
+        if not transpose:
+            v = np.pad(v, ((0, pad_width), (0, 0)))
+            v = v.at[-self.Qbc.shape[0]:].set(self.Qbc@v[v.shape[0] - self.Qbc.shape[1] - pad_width:v.shape[0] - pad_width])
+
+        v = jax.lax.scan(loop_body, init=(np.where(transpose, 0, self.h_c.shape[0] - 1), v), xs=None, length=self.h_c.shape[0])[0][1]
+
+        if transpose:
+            v = v.at[v.shape[0] - self.Qbc.shape[0]:v.shape[0] - pad_width].set(self.Qbc.T@v[-self.Qbc.shape[0]:])[:-pad_width]
+        else:
+            v = unpermute_q_mesh_1(v.T, self.n_dim, self.Rc.shape[0], self.colloc_points_unshifted).T
 
         if is_vector:
             v = v.ravel()
