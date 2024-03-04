@@ -9,7 +9,7 @@ lobatto_points_3 = np.array([-1, 0, 1])
 gauss_points_2 = np.array([-np.sqrt(1/3), np.sqrt(1/3)])
 gauss_points_3 = np.array([-np.sqrt(3/5), 0, np.sqrt(3/5)])
 gauss_points_4 = np.array([-np.sqrt(3/7 + (2/7) * np.sqrt(6/5)), -np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 - (2/7) * np.sqrt(6/5)), np.sqrt(3/7 + (2/7) * np.sqrt(6/5))])
-gauss_weights_4 = np.array([18 + np.sqrt(30), 18 - np.sqrt(30), 18 - np.sqrt(30), 18 + np.sqrt(30)]) / 36
+gauss_weights_4 = np.array([18 - np.sqrt(30), 18 + np.sqrt(30), 18 + np.sqrt(30), 18 - np.sqrt(30)]) / 36
 
 @jax.jit
 def smooth_max(x, smooth_max_temperature=1):
@@ -124,7 +124,10 @@ def recompute_mesh(y, mesh_old, colloc_points_unshifted=gauss_points_4, n_smooth
         meshi = np.linspace(*jax.lax.dynamic_slice(mesh_old, (i,), (2,)), colloc_points_unshifted.size + 1)
         yi = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (y.shape[0], colloc_points_unshifted.size + 1))
         return i + 1, divided_difference(meshi, yi)[colloc_points_unshifted.size, colloc_points_unshifted.size]
-    
+
+    shift = mesh_old[0]
+    scale = mesh_old[-1] - mesh_old[0]
+    mesh_old = (mesh_old - shift) / scale
     _, deriv = jax.lax.scan(loop_body, init=0, xs=None, length=mesh_old.size - 1)
     midpoints = (mesh_old[1:] + mesh_old[:-1]) / 2
     deriv = np.pad((deriv[1:] - deriv[:-1]).T / (midpoints[1:] - midpoints[:-1]), ((0, 0), (1, 1)), mode="edge")
@@ -134,7 +137,7 @@ def recompute_mesh(y, mesh_old, colloc_points_unshifted=gauss_points_4, n_smooth
     mesh_mass = np.pad(np.cumsum((mesh_density[1:] + mesh_density[:-1]) * (mesh_old[1:] - mesh_old[:-1])) / 2, (1, 0))
     mesh_new = np.interp(np.linspace(0, mesh_mass[-1], mesh_old.size), mesh_mass, mesh_old)
     
-    return mesh_new, mesh_density
+    return scale * mesh_new + shift, mesh_density
 
 @jax.jit
 def recompute_node_y(y, mesh_old, mesh_new, colloc_points_unshifted=gauss_points_4):
