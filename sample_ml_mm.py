@@ -88,7 +88,7 @@ thin = 100
 #jac = lambda *args:defining_systems.periodic_bvp_mm_colloc_jac(*args, n_mesh_intervals=n_mesh_intervals)
 #n_constraints = resid(q0, *args).size
 #l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-#traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.qr_ortho_proj_bvp,
+#traj_ml_lc, key_lc = lgvn.gOBABO(q0, p0, l0, dt, friction, n_steps, thin, prng_key, potential, resid, jac, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, linsol=linear_solver.lq_ortho_proj_bvp,
 #                                  max_newton_iter=100, constraint_tol=1e-9, args=args, metropolize=True, reversibility_tol=1e-6)
 
 ml1 = model.Morris_Lecar_nondim(par=np.zeros(model.Morris_Lecar_nondim.n_par))
@@ -100,7 +100,7 @@ resid = lambda *args, **kwargs:defining_systems.bvp_mm_colloc_resid_multi_shared
 jac = lambda *args, **kwargs:defining_systems.bvp_mm_colloc_jac_multi_shared_k(*args, n_mesh_intervals=(n_mesh_intervals, n_mesh_intervals), n_smooth=6, **kwargs)
 n_constraints = resid(q0, ode_models=(ml1, ml2)).size
 l0 = x[2 * q0.size:2 * q0.size + n_constraints]
-linsol = linear_solver.qr_ortho_proj_bvp_multi_shared_k_1
+linsol = linear_solver.lq_ortho_proj_bvp_multi_shared_k_1
 #nlsol = nonlinear_solver.gauss_newton_bvp_multi_shared_k_1
 prng_key = x[-1:].view(np.uint32)
 

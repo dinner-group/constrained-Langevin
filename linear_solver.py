@@ -6,7 +6,7 @@ from functools import partial
 jax.config.update("jax_enable_x64", True)
 
 @jax.jit
-def qr_ortho_proj(J, b, J_and_factor=None, inverse_mass=None):
+def lq_ortho_proj(J, b, J_and_factor=None, inverse_mass=None):
 
     if J_and_factor is None:
         if inverse_mass is None:
@@ -40,7 +40,7 @@ def qr_ortho_proj(J, b, J_and_factor=None, inverse_mass=None):
     return b - b_proj, b_proj_coeff, J_and_factor
 
 @jax.jit
-def qr_ortho_proj_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
+def lq_ortho_proj_bvp_dense(J, b, J_and_factor=None, inverse_mass=None):
 
     if J_and_factor is None:
         if inverse_mass is None:
@@ -73,7 +73,7 @@ def factor_bvpjac_k(J, J_LQ):
     return E, Q_k, R_k
 
 @jax.jit
-def qr_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
+def lq_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
     if J_LQ is None:
         J_LQ = J.lq_factor()
@@ -96,7 +96,7 @@ def qr_lstsq_bvp(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
     return out, u
 
 @jax.jit
-def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None, return_parallel_component=True):
+def lq_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None, return_parallel_component=True):
 
     if inverse_mass is None:
         sqrtMinv = None
@@ -105,7 +105,7 @@ def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None, return_paralle
         sqrtMinv = np.sqrt(inverse_mass)
         JsqrtMinv = J.right_multiply_diag(sqrtMinv)
     else:
-        return qr_ortho_proj_bvp_dense(J, b, J_and_factor, inverse_mass)
+        return lq_ortho_proj_bvp_dense(J, b, J_and_factor, inverse_mass)
 
     if J_and_factor is None:
         J_and_factor = (J, JsqrtMinv.lq_factor())
@@ -117,7 +117,7 @@ def qr_ortho_proj_bvp(J, b, J_and_factor=None, inverse_mass=None, return_paralle
         b = sqrtMinv * b
 
     JMinvb = JsqrtMinv.right_multiply(b)
-    out = qr_lstsq_bvp(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
+    out = lq_lstsq_bvp(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     projection = np.where(return_parallel_component, b - out[0], out[0])
     return projection, out[1], J_and_factor
 
@@ -147,7 +147,7 @@ def factor_bvpjac_k_multi_eqn_shared_k(J, J_LQ):
     return E, Q_k, R_k
 
 @jax.jit
-def qr_lstsq_bvp_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
+def lq_lstsq_bvp_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=None):
 
     if J_LQ is None:
         J_LQ = tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv)
@@ -182,7 +182,7 @@ def qr_lstsq_bvp_multi_eqn_shared_k(J, b, J_LQ=None, Jk_factor=None, sqrtMinv=No
     return out, u
 
 @jax.jit
-def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=None):
+def lq_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=None):
 
     if inverse_mass is None:
         sqrtMinv = None
@@ -203,7 +203,7 @@ def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=N
             ind_stop = (ind[0] + J[i - 1].shape[0], ind[1] + J[i - 1].shape[1] - J[i - 1].n_par)
             J_dense = J_dense.at[ind_start[0]:ind_stop[0], ind_start[1]:ind_stop[1]].set(J[i].todense()[:, J[i].n_par:])
             ind_start = ind_stop
-        return qr_ortho_proj(J_dense, b, None, inverse_mass)
+        return lq_ortho_proj(J_dense, b, None, inverse_mass)
 
     if J_and_factor is None:
         J_and_factor = (J, tuple(JsqrtMinv_i.lq_factor() for JsqrtMinv_i in JsqrtMinv))
@@ -221,7 +221,7 @@ def qr_ortho_proj_bvp_multi_eqn_shared_k(J, b, J_and_factor=None, inverse_mass=N
         b = sqrtMinv * b
 
     JMinvb = np.concatenate([JsqrtMinv[i].right_multiply(np.concatenate([b[:J[0].n_par], b[row_indices_b[i]:row_indices_b[i + 1]]])) for i in range(len(J))])
-    out = qr_lstsq_bvp_multi_eqn_shared_k(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
+    out = lq_lstsq_bvp_multi_eqn_shared_k(J, JMinvb, J_LQ, Jk_factor, sqrtMinv)
     return b - out[0], out[1], J_and_factor 
 
 @jax.jit
@@ -232,7 +232,7 @@ def factor_bvpjac_k_multi_shared_k_1(J, J_LQ):
     return E, Q_k, R_k
 
 @jax.jit
-def qr_lstsq_bvp_multi_shared_k_1(J, b, J_LQ=None, Jk_factor=None):
+def lq_lstsq_bvp_multi_shared_k_1(J, b, J_LQ=None, Jk_factor=None):
 
     if J_LQ is None:
         J_LQ = tuple(J_i.lq_factor() for J_i in J)
@@ -260,7 +260,7 @@ def qr_lstsq_bvp_multi_shared_k_1(J, b, J_LQ=None, Jk_factor=None):
     return out, u
 
 @jax.jit
-def qr_ortho_proj_bvp_multi_shared_k_1(J, b, J_and_factor=None, inverse_mass=None):
+def lq_ortho_proj_bvp_multi_shared_k_1(J, b, J_and_factor=None, inverse_mass=None):
 
     if J_and_factor is None:
         J_and_factor = (J, tuple(J_i.lq_factor() for J_i in J))
@@ -275,7 +275,7 @@ def qr_ortho_proj_bvp_multi_shared_k_1(J, b, J_and_factor=None, inverse_mass=Non
         row_indices_b[i + 1] = row_indices_b[i] + J[i].shape[1] - J[i].n_par
 
     Jb = np.concatenate([J[i].right_multiply(np.concatenate([b[:row_indices_b[0]], b[row_indices_b[i]:row_indices_b[i + 1]]])) for i in range(len(J))])
-    out = qr_lstsq_bvp_multi_shared_k_1(J, Jb, J_LQ, Jk_factor)
+    out = lq_lstsq_bvp_multi_shared_k_1(J, Jb, J_LQ, Jk_factor)
 
     return b - out[0], out[1], J_and_factor 
 

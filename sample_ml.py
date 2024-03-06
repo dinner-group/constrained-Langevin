@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 
 @partial(jax.jit, static_argnums=(4, 5, 6, 10, 11, 12, 13))
 def rattle_drift_ml_bvp_mm(position, momentum, lagrange_multiplier, dt, potential, constraint, jac_constraint=None, inverse_mass=None, J_and_factor=None, 
-                                    constraint_args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.qr_ortho_proj, max_newton_iter=20, constraint_tol=1e-9):
+                                    constraint_args=(), nlsol=nonlinear_solver.newton_rattle, linsol=linear_solver.lq_ortho_proj, max_newton_iter=20, constraint_tol=1e-9):
     
     mesh_points = constraint_args[0]
     y = position[model.Morris_Lecar.n_par:-1]
@@ -68,7 +68,7 @@ U = defining_systems.morris_lecar_bvp_potential
 f = defining_systems.morris_lecar_bvp
 J = defining_systems.morris_lecar_bvp_jac
 
-q1, p1, l1, energy, force, _, args = lgvn.rattle_kick(q0, p0, dt / 2, U, f, J, args=args, linsol=linear_solver.qr_ortho_proj_bvp)
+q1, p1, l1, energy, force, _, args = lgvn.rattle_kick(q0, p0, dt / 2, U, f, J, args=args, linsol=linear_solver.lq_ortho_proj_bvp)
 n_steps = 1000000
 thin = 100
 out = []
@@ -78,7 +78,7 @@ while n_steps > 0:
     
     traj_br_lc, key_lc = lgvn.gBAOAB(q1, p1, l1, dt, friction, n_steps, thin, prng_key, U, f, J,\
                                      energy=energy, force=force, A=rattle_drift_ml_bvp_mm, nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden,\
-                                     linsol=linear_solver.qr_ortho_proj_bvp, max_newton_iter=100, constraint_tol=1e-8, args=(mesh_points, bounds), inverse_mass=Minv)
+                                     linsol=linear_solver.lq_ortho_proj_bvp, max_newton_iter=100, constraint_tol=1e-8, args=(mesh_points, bounds), inverse_mass=Minv)
     
     n_success = np.isfinite(traj_br_lc[:, 0]).sum() - 10
 
@@ -94,7 +94,7 @@ while n_steps > 0:
     prng_key, subkey = jax.random.split(prng_key)
     p1 = jax.random.normal(prng_key, p1.shape)
     mesh_points = traj_br_lc[-1, -n_mesh_intervals - 1 - 2 * model.Morris_Lecar.n_par:-2 * model.Morris_Lecar.n_par]
-    q1, p1, l1, energy, force, _, args = lgvn.rattle_kick(q1, p1, dt / 2, U, f, J, args=(mesh_points, bounds), linsol=linear_solver.qr_ortho_proj_bvp)
+    q1, p1, l1, energy, force, _, args = lgvn.rattle_kick(q1, p1, dt / 2, U, f, J, args=(mesh_points, bounds), linsol=linear_solver.lq_ortho_proj_bvp)
     n_steps = int(n_steps - n_success * thin)
 
     print("%d successful steps"%(n_success), flush=True)

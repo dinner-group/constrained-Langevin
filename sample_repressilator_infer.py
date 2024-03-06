@@ -122,7 +122,7 @@ n_steps = argp.n_steps
 thin = argp.thin
 
 traj_rp_lc = lgvn.sample((q0, p0, l0, None, None, prng_key), dt=1e-1, n_steps=n_steps, thin=thin, friction=1e-1,
-                                 potential=potential, stepper=lgvn.gOBABO, constraint=resid, jac_constraint=jac, linsol=linear_solver.qr_ortho_proj_bvp, 
+                                 potential=potential, stepper=lgvn.gOBABO, constraint=resid, jac_constraint=jac, linsol=linear_solver.lq_ortho_proj_bvp, 
                                  nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, max_newton_iter=100, metropolize=True, reversibility_tol=1e-6, ode_model=rp, 
                                  colloc_points_unshifted=util.gauss_points_4, print_acceptance=True)
 

@@ -281,7 +281,7 @@ def quasi_newton_bvp_symm(x, resid, jac_prev, jac, inverse_mass=None, max_iter=1
 
     def loop_body(carry):
         x, step, dx = carry
-        dx, _ = linear_solver.qr_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+        dx, _ = linear_solver.lq_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
@@ -307,9 +307,9 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
 
     Jk_factor = linear_solver.factor_bvpjac_k(jac_prev, J_LQ)
 
-    dx, _ = linear_solver.qr_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+    dx, _ = linear_solver.lq_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
     x = x + dx
-    v, _ = linear_solver.qr_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+    v, _ = linear_solver.lq_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -322,7 +322,7 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v, _ = linear_solver.qr_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+        v, _ = linear_solver.lq_lstsq_bvp(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
@@ -366,9 +366,9 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
     J_LQ = J_and_factor[1]
     Jk_factor = linear_solver.factor_bvpjac_k_multi_eqn_shared_k(jac_prev, J_LQ)
 
-    dx, _ = linear_solver.qr_lstsq_bvp_multi_eqn_shared_k(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+    dx, _ = linear_solver.lq_lstsq_bvp_multi_eqn_shared_k(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
     x = x + dx
-    v, _ = linear_solver.qr_lstsq_bvp_multi_eqn_shared_k(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+    v, _ = linear_solver.lq_lstsq_bvp_multi_eqn_shared_k(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -381,7 +381,7 @@ def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, in
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v, _ = linear_solver.qr_lstsq_bvp_multi_eqn_shared_k(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
+        v, _ = linear_solver.lq_lstsq_bvp_multi_eqn_shared_k(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor, sqrtMinv)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
@@ -404,9 +404,9 @@ def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_
     J_LQ = J_and_factor[1]
     Jk_factor = linear_solver.factor_bvpjac_k_multi_shared_k_1(jac_prev, J_LQ)
 
-    dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+    dx, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
     x = x + dx
-    v, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+    v, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
     projection2 = v.T@dx / (dx.T@dx)
     contraction_factor = np.sqrt(v.T@v / (dx.T@dx))
     dx_prev = dx
@@ -419,7 +419,7 @@ def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        v, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
@@ -440,7 +440,7 @@ def quasi_newton_bvp_multi_shared_k_symm_1(x, resid, jac_prev, jac, max_iter=100
 
     J_LQ = J_and_factor[1]
     Jk_factor = linear_solver.factor_bvpjac_k_multi_shared_k_1(jac_prev, J_LQ)
-    dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+    dx, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
 
     def cond(carry):
         x, step, dx = carry
@@ -449,7 +449,7 @@ def quasi_newton_bvp_multi_shared_k_symm_1(x, resid, jac_prev, jac, max_iter=100
     def loop_body(carry):
         x, step, dx = carry
         x = x + dx
-        dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        dx, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
         return x, step + 1, dx
 
     init = (x, 1, dx)
@@ -468,7 +468,7 @@ def gauss_newton_bvp_multi_shared_k_1(x, resid, jac_prev, jac, max_iter=100, tol
         J = jac(x, *args, **kwargs)
         J_LQ = tuple(J_i.lq_factor() for J_i in J)
         Jk_factor = linear_solver.factor_bvpjac_k_multi_shared_k_1(J, J_LQ)
-        dx, _ = linear_solver.qr_lstsq_bvp_multi_shared_k_1(J, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        dx, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(J, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
         x = x + dx
         return x, step + 1, dx
 
