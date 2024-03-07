@@ -991,10 +991,12 @@ class BVPMMJac_1:
         out = jax.lax.scan(loop_body, init=(0, np.zeros((Jy.shape[1], Jy.shape[2] - Jy.shape[1])), np.zeros(Jy.shape[1]), self.Jbc.T), xs=Jy)
         Rbc = out[0][3]
         h, tau, Rc = out[1]
-        Qbc, Rbc_i = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:])
+        h_bc, tau_bc = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:], mode="raw")
+        Rbc_i = np.triu(Q_multiply_from_reflectors(h_bc, tau_bc, Rbc[-self.Jy.shape[0] - self.n_dim:], transpose=True))
+        Rbc_i = Rbc_i[:Rbc_i.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc_i.shape[1]]
         Rbc = Rbc.at[Rbc.shape[0] - self.Jy.shape[0] - self.n_dim:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
 
-        return BVPMMJac_LQ_1(h, tau, Qbc, Rc, Rbc[:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]], self.n_dim, self.n_par, self.colloc_points_unshifted)
+        return BVPMMJac_LQ_1(h, tau, h_bc, tau_bc, Rc, Rbc[:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]], self.n_dim, self.n_par, self.colloc_points_unshifted)
     
     def _tree_flatten(self):
         children = (self.Jy, self.Jk, self.Jbc, self.colloc_points_unshifted)
@@ -1007,11 +1009,12 @@ class BVPMMJac_1:
 
 class BVPMMJac_LQ_1:
 
-    def __init__(self, h_c, tau_c, Qbc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points_4):
+    def __init__(self, h_c, tau_c, h_bc, tau_bc, Rc, Rbc, n_dim, n_par, colloc_points_unshifted=gauss_points_4):
 
         self.h_c = h_c
         self.tau_c = tau_c
-        self.Qbc = Qbc
+        self.h_bc = h_bc
+        self.tau_bc = tau_bc
         self.Rc = Rc
         self.Rbc = Rbc
         self.n_dim = n_dim
@@ -1093,16 +1096,16 @@ class BVPMMJac_LQ_1:
             v = jax.lax.dynamic_update_slice(v, v_i, (i * self.Rc.shape[2], 0))
             return (i + np.where(transpose, 1, -1), v), _
 
-        pad_width = self.Qbc.shape[0] - self.Qbc.shape[1]
+        n_rows_Q = (self.Rc.shape[0] + 1) * self.Rc.shape[0] + self.n_dim
 
         if not transpose:
-            v = np.pad(v, ((0, pad_width), (0, 0)))
-            v = v.at[-self.Qbc.shape[0]:].set(self.Qbc@v[v.shape[0] - self.Qbc.shape[1] - pad_width:v.shape[0] - pad_width])
+            v = np.pad(v, ((0, n_rows_Q - v.shape[0]), (0, 0)))
+            v = v.at[-self.h_bc.shape[1]:].set(Q_multiply_from_reflectors(self.h_bc, self.tau_bc, v[-self.h_bc.shape[1]:], transpose=transpose))
 
         v = jax.lax.scan(loop_body, init=(np.where(transpose, 0, self.h_c.shape[0] - 1), v), xs=None, length=self.h_c.shape[0])[0][1]
 
         if transpose:
-            v = v.at[v.shape[0] - self.Qbc.shape[0]:v.shape[0] - pad_width].set(self.Qbc.T@v[-self.Qbc.shape[0]:])[:-pad_width]
+            v = v.at[-self.h_bc.shape[1]:].set(Q_multiply_from_reflectors(self.h_bc, self.tau_bc, v[-self.h_bc.shape[1]:], transpose=transpose))[:self.Rbc.shape[0]]
         else:
             v = unpermute_q_mesh_1(v.T, self.n_dim, self.Rc.shape[0], self.colloc_points_unshifted).T
 
@@ -1112,13 +1115,13 @@ class BVPMMJac_LQ_1:
         return v
 
     def _tree_flatten(self):
-        children = (self.h_c, self.tau_c, self.Qbc, self.Rc, self.Rbc, self.colloc_points_unshifted)
+        children = (self.h_c, self.tau_c, self.h_bc, self.tau_bc, self.Rc, self.Rbc, self.colloc_points_unshifted)
         aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
         return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
-        return cls(*children[:5], **aux_data, colloc_points_unshifted=children[5])
+        return cls(*children[:6], **aux_data, colloc_points_unshifted=children[6])
 
 jax.tree_util.register_pytree_node(BVPJac, BVPJac._tree_flatten, BVPJac._tree_unflatten)
 jax.tree_util.register_pytree_node(BVPJac_LQ, BVPJac_LQ._tree_flatten, BVPJac_LQ._tree_unflatten)
