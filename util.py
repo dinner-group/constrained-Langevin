@@ -1096,7 +1096,7 @@ class BVPMMJac_LQ_1:
             v = jax.lax.dynamic_update_slice(v, v_i, (i * self.Rc.shape[2], 0))
             return (i + np.where(transpose, 1, -1), v), _
 
-        n_rows_Q = (self.Rc.shape[0] + 1) * self.Rc.shape[0] + self.n_dim
+        n_rows_Q = (self.Rc.shape[2] + 1) * self.Rc.shape[0] + self.n_dim
 
         if not transpose:
             v = np.pad(v, ((0, n_rows_Q - v.shape[0]), (0, 0)))
