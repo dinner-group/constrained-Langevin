@@ -46,8 +46,8 @@ def newton_rattle(x, resid, jac_prev, jac=None, inverse_mass=None, max_iter=20, 
 
     def loop_body(carry):
         x, step, dx = carry
-        J = jac(x, *args)
-        dx = jac_prevM.T@np.linalg.solve(J@jac_prevM.T, -resid(x, *args))
+        J = jac(x, *args, **kwargs)
+        dx = jac_prevM.T@np.linalg.solve(J@jac_prevM.T, -resid(x, *args, **kwargs))
         return x + dx, step + 1, dx
 
     init = (x, 0, np.full_like(x, np.inf))
@@ -336,6 +336,26 @@ def quasi_newton_bvp_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, ma
     return x, np.all(np.abs(dx) < tol), n_iter
 
 @partial(jax.jit, static_argnames=("resid", "jac"))
+def gauss_newton_bvp(x, resid, jac_prev, jac, max_iter=100, tol=1e-9, *args, **kwargs):
+    
+    def cond(carry):
+        x, step, dx = carry
+        return (step < max_iter) & np.any(np.abs(dx) > tol)
+
+    def loop_body(carry):
+        x, step, dx = carry
+        J = jac(x, *args, **kwargs)
+        J_LQ = J.lq_factor()
+        Jk_factor = linear_solver.factor_bvpjac_k(J, J_LQ)
+        dx, _ = linear_solver.lq_lstsq_bvp(J, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        x = x + dx
+        return x, step + 1, dx
+
+    init = (x, 0, np.full_like(x, np.inf))
+    x, n_iter, dx = jax.lax.while_loop(cond, loop_body, init)
+    return x, np.all(np.abs(dx) < tol), n_iter
+
+@partial(jax.jit, static_argnames=("resid", "jac"))
 def quasi_newton_bvp_multi_eqn_shared_k_symm_broyden(x, resid, jac_prev, jac, inverse_mass=None, max_iter=100, tol=1e-9, J_and_factor=None, *args, **kwargs):
     
     if inverse_mass is None:
@@ -419,7 +439,8 @@ def quasi_newton_bvp_multi_shared_k_symm_broyden_1(x, resid, jac_prev, jac, max_
     def loop_body(carry):
         x, step, dx, dx_prev, projection2, contraction_factor = carry
         x = x + dx
-        v, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -resid(x, *args, **kwargs), J_LQ, Jk_factor)
+        r = resid(x, *args, **kwargs)
+        v, _ = linear_solver.lq_lstsq_bvp_multi_shared_k_1(jac_prev, -r, J_LQ, Jk_factor)
         projection1 = v.T@dx_prev / (dx_prev.T@dx_prev)
         v = v + projection1 * dx
         projection2 = v.T@dx / (dx.T@dx)
