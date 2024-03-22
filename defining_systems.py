@@ -40,19 +40,6 @@ def fully_extended_hopf_log(q, ode_model, *args):
     return fully_extended_hopf(q, ode_model, *args)
 
 @jax.jit
-def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4):
-
-    colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * (interval_endpoints[1] - interval_endpoints[0]) / 2
-    node_points = np.linspace(*interval_endpoints, colloc_points.size + 1)
-    dd = util.divided_difference(node_points, y)
-    poly_interval = lambda t:util.newton_polynomial(t, node_points, y, dd)
-    poly = jax.vmap(poly_interval)(colloc_points)
-    poly_deriv = jax.vmap(jax.jacfwd(poly_interval))(colloc_points)
-    f_interval = jax.vmap(lambda yy:ode_model.f(0., yy, k))(poly)
-    f_interval = np.where(ode_model.not_algebraic, integration_time * f_interval, f_interval)
-    return np.ravel(ode_model.not_algebraic * poly_deriv - f_interval, order="C")
-
-@jax.jit
 def fully_extended_hopf_2n(q, ode_model, *args):
     
     k = q[:ode_model.n_par]
@@ -73,6 +60,18 @@ def fully_extended_hopf_2n_log(q, ode_model, *args):
     eigval = -np.exp(q[ode_model.n_par + 2 * ode_model.n_dim])
     q = q.at[ode_model.n_par + 2 * ode_model.n_dim].set(eigval)
     return fully_extended_hopf_2n(q, ode_model, *args)
+
+@jax.jit
+def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4):
+
+    colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * (interval_endpoints[1] - interval_endpoints[0]) / 2
+    node_points = np.linspace(*interval_endpoints, colloc_points.size + 1)
+    dd = util.divided_difference(node_points, y)
+    poly = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points, node_points, y, dd)
+    poly_deriv = jax.vmap(jax.jacfwd(util.newton_polynomial), (0, None, None, None))(colloc_points, node_points, y, dd)
+    f_interval = jax.vmap(ode_model.f, (None, 0, None))(0., poly, k)
+    f_interval = np.where(ode_model.not_algebraic, integration_time * f_interval, f_interval)
+    return np.ravel(ode_model.not_algebraic * poly_deriv - f_interval, order="C")
 
 @jax.jit
 def periodic_bvp_colloc_resid(q, ode_model, mesh_points=np.linspace(0, 1, 61), colloc_points_unshifted=util.gauss_points_4, *args):
@@ -190,6 +189,26 @@ def bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.ga
     mesh_mass = mesh_mass_interval.sum()
     return mesh_mass_interval[1:] - mesh_mass_interval[:-1]
 
+@jax.jit
+def bvp_mm_mesh_resid_curvature(y, k, interval_widths, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4):
+
+    n_mesh_intervals = interval_widths.size
+    n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
+    y = y.reshape((ode_model.n_dim, n_points), order="F")
+
+    def loop_body(i, _):
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        node_points = np.linspace(0, 1, colloc_points_unshifted.size + 1)
+        dd = util.divided_difference(node_points, y_i)
+        #d2poly = jax.vmap(jax.jacfwd(jax.jacfwd(util.newton_polynomial)), (0, None, None, None))(colloc_points_unshifted, node_points, y, dd)
+        poly = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points_unshifted, node_points, y, dd)
+        d2y = jax.vmap(lambda yy:jax.jvp(ode_model.f, (0., yy, k), (0., yy, np.zeros(ode_model.n_par)))[1])(poly)
+        return i + 1, interval_widths[i] * quadrature_weights@(1 + np.sum(d2y**2, axis=1))**(1/4)
+        #return i + 1, d2y
+
+    mesh_mass_interval = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
+    return mesh_mass_interval[1:] - mesh_mass_interval[:-1]
+
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth"))
 def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_4, *args, n_mesh_intervals=60, n_smooth=4):
 
@@ -257,7 +276,8 @@ def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_
     interval_widths = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals]
     mesh_points = np.cumsum(interval_widths)
     mesh_points = np.pad(mesh_points, (1, 0))
-    mesh_eqs = bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smooth)
+    #mesh_eqs = bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smoth)
+    mesh_eqs = bvp_mm_mesh_resid_curvature(y, k, interval_widths, ode_model, colloc_points_unshifted)
 
     def loop_body(i, _):
         y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
@@ -288,20 +308,16 @@ def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4,
 
         return i + 1, (np.hstack([Jy_i[:, :ode_model.n_dim], np.expand_dims(Jm_i, 1), Jy_i[:, ode_model.n_dim:]]), Jk_i)
 
-    def mm_mesh_resid_widths(y, interval_widths, ode_model, colloc_points_unshifted):
-        mesh_points = np.cumsum(interval_widths)
-        mesh_points = np.pad(mesh_points, (1, 0))
-        return bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smooth)
-
-    Jmesh_y = jax.jacrev(bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points, ode_model, colloc_points_unshifted, n_smooth)
-    Jmesh_m = jax.jacrev(mm_mesh_resid_widths, argnums=1)(y.ravel(order="F"), interval_widths, ode_model, colloc_points_unshifted)
+    Jmesh_y = jax.jacrev(bvp_mm_mesh_resid_curvature, argnums=0)(y.ravel(order="F"), k, interval_widths, ode_model, colloc_points_unshifted)
+    Jmesh_k = jax.jacrev(bvp_mm_mesh_resid_curvature, argnums=1)(y.ravel(order="F"), k, interval_widths, ode_model, colloc_points_unshifted)
+    Jmesh_m = jax.jacrev(bvp_mm_mesh_resid_curvature, argnums=2)(y.ravel(order="F"), k, interval_widths, ode_model, colloc_points_unshifted)
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
     Jmesh = util.permute_q_mesh_1(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
     Jbc = jax.jacrev(boundary_condition)(q, ode_model, n_mesh_intervals, colloc_points_unshifted, *args, **kwargs)
     Jy, Jk = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
     Jk = np.vstack(Jk)
     Jk = np.vstack([Jk, Jbc[:, :ode_model.n_par]])
-    Jk = np.pad(Jk, ((0, Jy.shape[0] * (Jy.shape[1] + 1) - 1 + ode_model.n_dim - Jk.shape[0]), (0, 0)))
+    Jk = np.vstack([Jk, Jmesh_k])
     if len(Jbc.shape) == 1:
         Jbc = np.expand_dims(Jbc, 0)
     Jbc_y = np.vstack([util.permute_q_mesh_1(Jbc[:, ode_model.n_par:], ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted), Jmesh])
@@ -380,6 +396,51 @@ def bvp_mm_colloc_jac_multi_shared_k(q, ode_models, colloc_points_unshifted=None
 
     return tuple(bvp_mm_colloc_jac(np.concatenate([q[:ode_models[0].n_par], q[y_indices[i]:y_indices[i + 1]]]), ode_models[i], colloc_points_unshifted[i], *args, n_mesh_intervals=n_mesh_intervals[i], n_smooth=n_smooth) 
             for i in range(len(ode_models)))
+
+@jax.jit
+def bvp_floquet_resid_interval(v, y, k, interval_width, ode_model, colloc_points_unshifted=util.gauss_points_4):    
+    
+    colloc_points = (1 + colloc_points_unshifted) / 2
+    node_points = np.linspace(0, 1, colloc_points_unshifted.size + 1)
+    dd_y = util.divided_difference(node_points, y)
+    dd_v = util.divided_difference(node_points, v)
+    poly_y = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points, node_points, y, dd_y)
+    poly_v = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points, node_points, v, dd_v)
+    poly_v_deriv = jax.vmap(jax.jacfwd(util.newton_polynomial), (0, None, None, None))(colloc_points, node_points, v, dd_v)
+    f_interval = jax.vmap(lambda yy, vv:jax.jvp(ode_model.f, (0., yy, k), (0., vv, np.zeros_like(k)))[1])(poly_y, poly_v)
+    return np.ravel(poly_v_deriv - interval_width * f_interval)
+
+@jax.jit
+def bvp_floquet_resid(v, y, k, interval_widths, ode_model, colloc_points_unshifted=util.gauss_points_4, *args, **kwargs):
+    
+    n_points = interval_widths.size * colloc_points_unshifted.size + 1
+    y = y.reshape((ode_model.n_dim, n_points), order="F")
+    v = v.reshape(y.shape, order="F")
+         
+    def loop_body(i, _):
+        
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        v_i = jax.lax.dynamic_slice(v, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        return i + 1, bvp_floquet_resid_interval(v_i, y_i, k, interval_widths[i], ode_model, colloc_points_unshifted)
+        
+    colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel()
+    return colloc_eqs
+
+@partial(jax.jit, static_argnames=("n_mesh_intervals",))
+def bvp_floquet_jac(v, y, k, interval_widths, ode_model, colloc_points_unshifted=util.gauss_points_4, *args, **kwargs):
+
+    n_points = interval_widths.size * colloc_points_unshifted.size + 1
+    y = y.reshape((ode_model.n_dim, n_points), order="F")
+    v = v.reshape(y.shape, order="F")
+    
+    def loop_body(i, _):
+        
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        v_i = jax.lax.dynamic_slice(v, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        return i + 1, jax.jacfwd(bvp_floquet_resid_interval)(v_i, y_i, k, interval_widths[i], ode_model, colloc_points_unshifted).reshape((colloc_points_unshifted.size * ode_model.n_dim, (colloc_points_unshifted.size + 1) * ode_model.n_dim), order="F")
+    
+    jac = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
+    return util.BVPJac(jac, np.zeros((jac.shape[0] * jac.shape[1], 0)), ode_model.n_dim, 0, np.zeros((ode_model.n_dim, ode_model.n_dim)), np.zeros((ode_model.n_dim, ode_model.n_dim)))
 
 @jax.jit
 def quadratic_roots_potential(position):
