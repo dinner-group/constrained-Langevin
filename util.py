@@ -276,12 +276,13 @@ def Q_multiply_from_reflectors(h, tau, v, transpose=False):
 
 class BVPJac:
 
-    def __init__(self, Jy, Jk, n_dim, n_par, Jbc_left=None, Jbc_right=None):
+    def __init__(self, Jy, Jk, n_dim, n_par, Jbc_left=None, Jbc_right=None, colloc_points_unshifted=gauss_points_4):
         self.Jy = Jy
         self.Jk = Jk
         self.n_dim = n_dim
         self.n_par = n_par
         self.shape = ((Jy.shape[0] * Jy.shape[1] + n_dim, Jy.shape[0] * Jy.shape[1] + n_dim + Jk.shape[1]))
+        self.colloc_points_unshifted = colloc_points_unshifted
 
         if Jbc_left is None:
             self.Jbc_left = -np.identity(n_dim)
@@ -416,12 +417,16 @@ class BVPJac:
 
         Q_c = np.zeros((self.Jy.shape[0], self.Jy.shape[2], self.Jy.shape[2]))
         R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))
+
         R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.n_dim))
-        R_bc = R_bc.at[:self.n_dim].set(self.Jbc_left)
-        R_bc = R_bc.at[-self.n_dim:].set(self.Jbc_right)
-        qi, ri = jax.scipy.linalg.qr(self.Jy[0].T)
+        R_bc = R_bc.at[:self.n_dim].set(self.Jbc_left.T)
+        R_bc = R_bc.at[-self.n_dim:].set(self.Jbc_right.T)
+
+        J_i = self.Jy[0].T
+        qi, ri = np.linalg.qr(J_i, mode="complete")
         Q_c = Q_c.at[0].set(qi)
         R_c = R_c.at[0, -ri.shape[1]:].set(ri[:-self.n_dim])
+
         R_bc = R_bc.at[:qi.shape[1]].set(qi.T@R_bc[:qi.shape[1]])
 
         def loop_body(carry, _):
@@ -429,10 +434,15 @@ class BVPJac:
             si = Q_c[i - 1, -self.n_dim:].T@self.Jy[i, :, :self.n_dim].T
             R_c = R_c.at[i, :self.Jy.shape[2]].set(si)
             bc = jax.lax.dynamic_slice(R_bc, (i * self.Jy.shape[1], 0), (self.Jy.shape[2], self.n_dim))
-            qi, ri = jax.scipy.linalg.qr(self.Jy[i].T.at[:self.n_dim].set(si[-self.n_dim:]))
+
+            J_i = self.Jy[i].T.at[:self.n_dim].set(si[-self.n_dim:])
+            qi, ri = np.linalg.qr(J_i, mode="complete")
+
             Q_c = Q_c.at[i].set(qi)
             R_c = R_c.at[i, -ri.shape[1]:].set(ri[:-self.n_dim])
+
             R_bc = jax.lax.dynamic_update_slice(R_bc, qi.T@bc, (i * self.Jy.shape[1], 0))
+
             return (i + 1, Q_c, R_c, R_bc), _
 
         out = jax.lax.scan(loop_body, init=(1, Q_c, R_c, R_bc), xs=None, length=self.Jy.shape[0] - 1)
@@ -440,15 +450,58 @@ class BVPJac:
         R_bc = out[0][3].at[-self.n_dim:].set(ri)
 
         return BVPJac_LQ(out[0][1], Q_bc, out[0][2], R_bc)
+
+    @partial(jax.jit, static_argnames=("method",))
+    def lq_factor_1(self, method="lapack"):
+
+        Rbc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.n_dim))
+        Rbc = Rbc.at[:self.n_dim].set(self.Jbc_left.T)
+        Rbc = Rbc.at[-self.n_dim:].set(self.Jbc_right.T)
+
+        def loop_body(carry, Jy_i):
+
+            i, h_prev, tau_prev, Rbc = carry
+
+            Jy_i = Jy_i.T
+            Jy_i = np.pad(Jy_i, ((Jy_i.shape[1], 0), (0, 0)))
+            Jy_i = Jy_i.at[:-Jy_i.shape[1]].set(Q_multiply_from_reflectors(h_prev, tau_prev, Jy_i[:-Jy_i.shape[1]], transpose=True))
+
+            if method == "lapack":
+                h, tau = np.linalg.qr(Jy_i[Jy_i.shape[1]:], mode="raw")
+                Rc_i = np.triu(h.T)
+            else if method == "householder":
+                pass
+
+            Rc_i = Jy_i.at[Jy_i.shape[1]:2 * Jy_i.shape[1]].set(Rc_i[:Jy_i.shape[1]])
+
+            Rbc_i = jax.lax.dynamic_slice(Rbc, (i * Jy_i.shape[1], 0), (Jy_i.shape[0] - Jy_i.shape[1], Rbc.shape[1]))
+            Rbc = jax.lax.dynamic_update_slice(Rbc, Q_multiply_from_reflectors(h, tau, Rbc_i, transpose=True), ((i * Jy_i.shape[1], 0)))
+
+            return (i + 1, h, tau, Rbc), (h, tau, Rc_i[:2 * Jy_i.shape[1]])
+
+        out = jax.lax.scan(loop_body, init=(0, np.zeros((self.Jy.shape[1], self.Jy.shape[2])), np.zeros(self.Jy.shape[1]), Rbc), xs=self.Jy)
+        Rbc = out[0][3]
+        h, tau, Rc = out[1]
+
+        if method == "lapack":
+            h_bc, tau_bc = np.linalg.qr(Rbc[-self.n_dim:], mode="raw")
+            Rbc_i = np.triu(h_bc.T)
+        else if method == "householder":
+            pass
+
+        Rbc_i = Rbc_i[:Rbc_i.shape[0] - self.n_dim + Rbc_i.shape[1]]
+        Rbc = Rbc.at[Rbc.shape[0] - self.n_dim:Rbc.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
+
+        return BVPMMJac_LQ_1(h, tau, h_bc, tau_bc, Rc, Rbc[:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]], self.n_dim, self.n_par, self.colloc_points_unshifted)
     
     def _tree_flatten(self):
-        children = (self.Jy, self.Jk, self.Jbc_left, self.Jbc_right)
+        children = (self.Jy, self.Jk, self.Jbc_left, self.Jbc_right, self.colloc_points_unshifted)
         aux_data = {"n_dim":self.n_dim, "n_par":self.n_par}
         return (children, aux_data)
 
     @classmethod
     def _tree_unflatten(cls, aux_data, children):
-        return cls(*children[:2], Jbc_left=children[2], Jbc_right=children[3], **aux_data)
+        return cls(*children[:2], Jbc_left=children[2], Jbc_right=children[3], colloc_points_unshifted=children[4], **aux_data)
 
 class BVPJac_LQ:
 
@@ -979,12 +1032,11 @@ class BVPMMJac_1:
             Jy_i = Jy_i.at[:-Jy_i.shape[1]].set(Q_multiply_from_reflectors(h_prev, tau_prev, Jy_i[:-Jy_i.shape[1]], transpose=True))
 
             h, tau = np.linalg.qr(Jy_i[Jy_i.shape[1]:], mode="raw")
+            Rc_i = np.triu(h.T)
+            Rc_i = Jy_i.at[Jy_i.shape[1]:2 * Jy_i.shape[1]].set(Rc_i[:Jy_i.shape[1]])
 
             Rbc_i = jax.lax.dynamic_slice(Rbc, (i * Jy_i.shape[1], 0), (Jy_i.shape[0] - Jy_i.shape[1], Rbc.shape[1]))
             Rbc = jax.lax.dynamic_update_slice(Rbc, Q_multiply_from_reflectors(h, tau, Rbc_i, transpose=True), ((i * Jy_i.shape[1], 0)))
-
-            Rc_i = Q_multiply_from_reflectors(h, tau, Jy_i[Jy_i.shape[1]:], transpose=True)
-            Rc_i = Jy_i.at[Jy_i.shape[1]:2 * Jy_i.shape[1]].set(np.triu(Rc_i[:Jy_i.shape[1]]))
 
             return (i + 1, h, tau, Rbc), (h, tau, Rc_i[:2 * Jy_i.shape[1]])
 
@@ -992,7 +1044,7 @@ class BVPMMJac_1:
         Rbc = out[0][3]
         h, tau, Rc = out[1]
         h_bc, tau_bc = np.linalg.qr(Rbc[-self.Jy.shape[0] - self.n_dim:], mode="raw")
-        Rbc_i = np.triu(Q_multiply_from_reflectors(h_bc, tau_bc, Rbc[-self.Jy.shape[0] - self.n_dim:], transpose=True))
+        Rbc_i = np.triu(h_bc.T)
         Rbc_i = Rbc_i[:Rbc_i.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc_i.shape[1]]
         Rbc = Rbc.at[Rbc.shape[0] - self.Jy.shape[0] - self.n_dim:Rbc.shape[0] - self.Jy.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
 
@@ -1082,8 +1134,8 @@ class BVPMMJac_LQ_1:
 
         return x
 
-    @partial(jax.jit, static_argnames=("transpose",))
-    def Q_multiply(self, v, transpose=False):
+    @partial(jax.jit, static_argnames=("transpose", "permute"))
+    def Q_multiply(self, v, transpose=False, permute=True):
 
         is_vector = len(v.shape) == 1
         if is_vector:
@@ -1096,7 +1148,7 @@ class BVPMMJac_LQ_1:
             v = jax.lax.dynamic_update_slice(v, v_i, (i * self.Rc.shape[2], 0))
             return (i + np.where(transpose, 1, -1), v), _
 
-        n_rows_Q = (self.Rc.shape[2] + 1) * self.Rc.shape[0] + self.n_dim
+        n_rows_Q = (self.h_c.shape[0] - 1) * self.h_c.shape[1] + self.h_c.shape[2]
 
         if not transpose:
             v = np.pad(v, ((0, n_rows_Q - v.shape[0]), (0, 0)))
@@ -1107,7 +1159,8 @@ class BVPMMJac_LQ_1:
         if transpose:
             v = v.at[-self.h_bc.shape[1]:].set(Q_multiply_from_reflectors(self.h_bc, self.tau_bc, v[-self.h_bc.shape[1]:], transpose=transpose))[:self.Rbc.shape[0]]
         else:
-            v = unpermute_q_mesh_1(v.T, self.n_dim, self.Rc.shape[0], self.colloc_points_unshifted).T
+            if permute:
+                v = unpermute_q_mesh_1(v.T, self.n_dim, self.Rc.shape[0], self.colloc_points_unshifted).T
 
         if is_vector:
             v = v.ravel()
