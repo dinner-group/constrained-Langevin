@@ -253,6 +253,42 @@ def unpermute_q_mesh_1(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss
 
     return x
 
+@jax.jit
+def compute_householder_reflector(x):
+    
+    v = x.at[0].set(1)
+    sigma = v[1:].T@v[1:]
+    x_norm = np.sqrt(x[0]**2 + sigma)
+    v0 = np.where(x[0] <= 0, x[0] - x_norm, -sigma / (x[0] + x_norm))
+    vv = v.at[0].set(v0)
+    tau = 2 / (1 + sigma / v0**2)
+    vv = vv / vv[0]
+    tau = np.where(sigma == 0, 0, tau)
+    v = np.where(sigma == 0, v, vv)
+    
+    return v, tau
+
+@jax.jit
+def householder_qr(A):
+
+    if A.size == 0:
+        return A.T, np.zeros(0), A
+
+    mask = np.tril(np.ones_like(A))
+    
+    def loop_body(i, carry):
+        h, tau, R = carry
+        R_i = np.roll(R[:, i] * mask[:, i], -i)
+        h_i, tau_i = compute_householder_reflector(R_i)
+        h_i = np.roll(h_i, i)
+        R = R - tau_i * np.outer(h_i, h_i@R)
+        h = h.at[i].set(h_i)
+        tau = tau.at[i].set(tau_i)
+        return h, tau, R
+    
+    out = jax.lax.fori_loop(0, A.shape[1], loop_body, (np.zeros_like(A.T), np.zeros(A.shape[1]), A))
+    return *out[:2], np.triu(out[2])
+
 @partial(jax.jit, static_argnames="transpose")
 def Q_multiply_from_reflectors(h, tau, v, transpose=False):
 
@@ -273,6 +309,49 @@ def Q_multiply_from_reflectors(h, tau, v, transpose=False):
         return A, None 
         
     return jax.lax.scan(loop_body, init=v, xs=(np.triu(h).at[np.diag_indices(h.shape[0])].set(1), tau), reverse=not transpose)[0]
+
+@jax.jit
+def compute_givens_rotation(a, b):
+    b_zero = abs(b) == 0
+    a_lt_b = abs(a) < abs(b)
+    t = -np.where(a_lt_b, a, b) / np.where(a_lt_b, b, a)
+    r = jax.lax.rsqrt(1 + abs(t) ** 2).astype(t.dtype)
+    cs = np.where(b_zero, 1, np.where(a_lt_b, r * t, r))
+    sn = np.where(b_zero, 0, np.where(a_lt_b, r, r * t))
+    return cs, sn
+
+@jax.jit
+def apply_givens_rotation(H, i, j, cs, sn, transpose=False):
+    x1 = H[i]
+    y1 = H[j]
+    x2 = cs.conj() * x1 - np.where(transpose, -1, 1) * sn.conj() * y1
+    y2 = np.where(transpose, -1, 1) * sn * x1 + cs * y1
+    H = H.at[i].set(x2)
+    H = H.at[j].set(y2)
+    return H
+
+@jax.jit
+def givens_qr(A):
+    
+    if A.shape[0] < A.shape[1]:
+        n = A.shape[0]
+    else:
+        n = A.shape[1]
+        
+    givens_factors = np.zeros((A.size - n * (n - 1) // 2 - n, 2))
+    
+    def loop_inner(j, carry):
+        i, k, givens_factors, A = carry
+        cs, sn = compute_givens_rotation(A[i, i], A[j, i])
+        A = apply_givens_rotation(A, i, j, cs, sn)
+        givens_factors = givens_factors.at[k].set((cs, sn))
+        return i, k + 1, givens_factors, A
+    
+    def loop_outer(i, carry):
+        return jax.lax.fori_loop(i + 1, A.shape[0], loop_inner, (i, *carry))[1:]
+    
+    out =  jax.lax.fori_loop(0, A.shape[1], loop_outer, (0, givens_factors, A))
+    return out[1], np.triu(out[2])
 
 class BVPJac:
 
@@ -418,7 +497,7 @@ class BVPJac:
         Q_c = np.zeros((self.Jy.shape[0], self.Jy.shape[2], self.Jy.shape[2]))
         R_c = np.zeros((self.Jy.shape[0], 2 * self.Jy.shape[1], self.Jy.shape[1]))
 
-        R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.n_dim))
+        R_bc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.Jbc_left.shape[0]))
         R_bc = R_bc.at[:self.n_dim].set(self.Jbc_left.T)
         R_bc = R_bc.at[-self.n_dim:].set(self.Jbc_right.T)
 
@@ -454,7 +533,7 @@ class BVPJac:
     @partial(jax.jit, static_argnames=("method",))
     def lq_factor_1(self, method="lapack"):
 
-        Rbc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.n_dim))
+        Rbc = np.zeros((self.n_dim + self.Jy.shape[1] * self.Jy.shape[0], self.Jbc_left.shape[0]))
         Rbc = Rbc.at[:self.n_dim].set(self.Jbc_left.T)
         Rbc = Rbc.at[-self.n_dim:].set(self.Jbc_right.T)
 
@@ -469,8 +548,8 @@ class BVPJac:
             if method == "lapack":
                 h, tau = np.linalg.qr(Jy_i[Jy_i.shape[1]:], mode="raw")
                 Rc_i = np.triu(h.T)
-            else if method == "householder":
-                pass
+            elif method == "householder":
+                h, tau, Rc_i = householder_qr(Jy_i[Jy_i.shape[1]:])
 
             Rc_i = Jy_i.at[Jy_i.shape[1]:2 * Jy_i.shape[1]].set(Rc_i[:Jy_i.shape[1]])
 
@@ -486,8 +565,8 @@ class BVPJac:
         if method == "lapack":
             h_bc, tau_bc = np.linalg.qr(Rbc[-self.n_dim:], mode="raw")
             Rbc_i = np.triu(h_bc.T)
-        else if method == "householder":
-            pass
+        elif method == "householder":
+            h_bc, tau_bc, Rbc_i = householder_qr(Rbc[-self.n_dim:])
 
         Rbc_i = Rbc_i[:Rbc_i.shape[0] - self.n_dim + Rbc_i.shape[1]]
         Rbc = Rbc.at[Rbc.shape[0] - self.n_dim:Rbc.shape[0] - self.n_dim + Rbc.shape[1]].set(Rbc_i)
