@@ -440,7 +440,7 @@ def bvp_floquet_jac(v, y, k, interval_widths, ode_model, colloc_points_unshifted
         return i + 1, jax.jacfwd(bvp_floquet_resid_interval)(v_i, y_i, k, interval_widths[i], ode_model, colloc_points_unshifted).reshape((colloc_points_unshifted.size * ode_model.n_dim, (colloc_points_unshifted.size + 1) * ode_model.n_dim), order="F")
     
     jac = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
-    return util.BVPJac(jac, np.zeros((jac.shape[0] * jac.shape[1], 0)), ode_model.n_dim, 0, np.zeros((ode_model.n_dim, ode_model.n_dim)), np.zeros((ode_model.n_dim, ode_model.n_dim)))
+    return util.BVPJac(jac, np.zeros((jac.shape[0] * jac.shape[1], 0)), ode_model.n_dim, 0, np.zeros((0, ode_model.n_dim)), np.zeros((0, ode_model.n_dim)))
 
 @jax.jit
 def quadratic_roots_potential(position):
