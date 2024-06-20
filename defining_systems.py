@@ -62,11 +62,12 @@ def fully_extended_hopf_2n_log(q, ode_model, *args):
     return fully_extended_hopf_2n(q, ode_model, *args)
 
 @jax.jit
-def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4):
+def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4, dd=None):
 
     colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * (interval_endpoints[1] - interval_endpoints[0]) / 2
     node_points = np.linspace(*interval_endpoints, colloc_points.size + 1)
-    dd = util.divided_difference(node_points, y)
+    if dd is None:
+        dd = util.divided_difference(node_points, y)
     poly = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points, node_points, y, dd)
     poly_deriv = jax.vmap(jax.jacfwd(util.newton_polynomial), (0, None, None, None))(colloc_points, node_points, y, dd)
     f_interval = jax.vmap(ode_model.f, (None, 0, None))(0., poly, k)
@@ -190,7 +191,17 @@ def bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted=util.ga
     return mesh_mass_interval[1:] - mesh_mass_interval[:-1]
 
 @jax.jit
-def bvp_mm_mesh_resid_curvature(y, k, interval_widths, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4):
+def bvp_mm_mesh_resid_curvature_interval(y_i, k, interval_width, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4, dd=None):
+
+    node_points = np.linspace(0, 1, colloc_points_unshifted.size + 1)
+    if dd is None:
+        dd = util.divided_difference(node_points, y_i)
+    poly = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points_unshifted, node_points, y_i, dd)
+    d2y = jax.vmap(lambda yy:jax.jvp(ode_model.f, (0., yy, k), (0., yy, np.zeros(ode_model.n_par)))[1])(poly)
+    return interval_width * quadrature_weights@(1 + np.sum(d2y**2, axis=1))**(1/4)
+
+@jax.jit
+def bvp_mm_mesh_resid_curvature(y, k, interval_widths, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4, dd=None):
 
     n_mesh_intervals = interval_widths.size
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -198,13 +209,7 @@ def bvp_mm_mesh_resid_curvature(y, k, interval_widths, ode_model, colloc_points_
 
     def loop_body(i, _):
         y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
-        node_points = np.linspace(0, 1, colloc_points_unshifted.size + 1)
-        dd = util.divided_difference(node_points, y_i)
-        #d2poly = jax.vmap(jax.jacfwd(jax.jacfwd(util.newton_polynomial)), (0, None, None, None))(colloc_points_unshifted, node_points, y, dd)
-        poly = jax.vmap(util.newton_polynomial, (0, None, None, None))(colloc_points_unshifted, node_points, y, dd)
-        d2y = jax.vmap(lambda yy:jax.jvp(ode_model.f, (0., yy, k), (0., yy, np.zeros(ode_model.n_par)))[1])(poly)
-        return i + 1, interval_widths[i] * quadrature_weights@(1 + np.sum(d2y**2, axis=1))**(1/4)
-        #return i + 1, d2y
+        return i + 1, bvp_mm_mesh_resid_curvature_interval(y_i, k, interval_widths[i], ode_model, colloc_points_unshifted, quadrature_weights, dd)
 
     mesh_mass_interval = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
     return mesh_mass_interval[1:] - mesh_mass_interval[:-1]
