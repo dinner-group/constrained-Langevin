@@ -227,7 +227,7 @@ def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gaus
 
     def loop_body(i, _):
         interval_endpoints = jax.lax.dynamic_slice(mesh_points, (i,), (2,))
-        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        y_i = jax.lax.dynamic_slice(y, (0, i, mesh_mass_interval * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
         r_i = bvp_colloc_resid_interval(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
         return i + 1, r_i
 
@@ -273,7 +273,7 @@ def periodic_boundary_condition(q, ode_model, n_mesh_intervals, colloc_points_un
     return y[:, -1] - y[:, 0]
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth", "boundary_condition"))
-def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_4, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
+def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -282,15 +282,18 @@ def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_
     mesh_points = np.cumsum(interval_widths)
     mesh_points = np.pad(mesh_points, (1, 0))
     #mesh_eqs = bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smoth)
-    mesh_eqs = bvp_mm_mesh_resid_curvature(y, k, interval_widths, ode_model, colloc_points_unshifted)
 
     def loop_body(i, _):
         y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
-        r_i = bvp_colloc_resid_interval(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted)
-        return i + 1, r_i
+        interval_endpoints = np.array([0., 1])
+        node_points = np.linspace(*interval_endpoints, colloc_points_unshifted.size + 1)
+        dd = util.divided_difference(node_points, y_i)
+        r_i = bvp_colloc_resid_interval(y_i, k, interval_widths[i], interval_endpoints, ode_model, colloc_points_unshifted)
+        mesh_mass_interval = bvp_mm_mesh_resid_curvature_interval(y_i, k, interval_widths[i], ode_model, colloc_points_unshifted, quadrature_weights, dd) 
+        return i + 1, (r_i, mesh_mass_interval)
 
-    colloc_eqs = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1].ravel(order="C")
-    resid = np.concatenate([colloc_eqs, boundary_condition(q, ode_model, n_mesh_intervals, colloc_points_unshifted, *args, **kwargs), mesh_eqs])
+    colloc_eqs, mesh_mass = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
+    resid = np.concatenate([colloc_eqs.ravel(order="C"), boundary_condition(q, ode_model, n_mesh_intervals, colloc_points_unshifted, *args, **kwargs), mesh_mass[1:] - mesh_mass[:-1]])
 
     return resid
 
