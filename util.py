@@ -166,17 +166,18 @@ def interpolate(y, mesh_points, t_eval, colloc_points_unshifted=gauss_points_4):
     return y_interp.T
 
 @jax.jit
-def curvature_interval(y, colloc_points_unshifted=gauss_points_4):
+def curvature_interval_poly(y, colloc_points_unshifted=gauss_points_4, dd=None):
 
     colloc_points = 1 + colloc_points_unshifted
     node_points = np.linspace(0, 1, colloc_points.size + 1)
-    dd = divided_difference(node_points, y)
+    if dd is None:
+        dd = divided_difference(node_points, y)
     poly = jax.vmap(newton_polynomial, (0, None, None, None))(colloc_points, node_points, y, dd)
     poly_deriv2 = jax.vmap(jax.jacfwd(jax.jacfwd(newton_polynomial)), (0, None, None, None))(colloc_points, node_points, y, dd)
     return poly.T, poly_deriv2.T
 
 @jax.jit
-def curvature(y, colloc_points_unshifted=gauss_points_4, quadrature_weights=gauss_weights_4):
+def curvature_poly(y, colloc_points_unshifted=gauss_points_4, quadrature_weights=gauss_weights_4):
 
     def loop_body(i, carry):
         
