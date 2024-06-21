@@ -227,7 +227,7 @@ def periodic_bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gaus
 
     def loop_body(i, _):
         interval_endpoints = jax.lax.dynamic_slice(mesh_points, (i,), (2,))
-        y_i = jax.lax.dynamic_slice(y, (0, i, mesh_mass_interval * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
+        y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
         r_i = bvp_colloc_resid_interval(y_i, k, period, interval_endpoints, ode_model, colloc_points_unshifted)
         return i + 1, r_i
 
@@ -320,7 +320,7 @@ def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4,
     Jmesh_k = jax.jacrev(bvp_mm_mesh_resid_curvature, argnums=1)(y.ravel(order="F"), k, interval_widths, ode_model, colloc_points_unshifted)
     Jmesh_m = jax.jacrev(bvp_mm_mesh_resid_curvature, argnums=2)(y.ravel(order="F"), k, interval_widths, ode_model, colloc_points_unshifted)
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
-    Jmesh = util.permute_q_mesh_1(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
+    Jmesh = util.BVPMMJac_1.permute_col(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
     Jbc = jax.jacrev(boundary_condition)(q, ode_model, n_mesh_intervals, colloc_points_unshifted, *args, **kwargs)
     Jy, Jk = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
     Jk = np.vstack(Jk)
@@ -328,7 +328,7 @@ def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4,
     Jk = np.vstack([Jk, Jmesh_k])
     if len(Jbc.shape) == 1:
         Jbc = np.expand_dims(Jbc, 0)
-    Jbc_y = np.vstack([util.permute_q_mesh_1(Jbc[:, ode_model.n_par:], ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted), Jmesh])
+    Jbc_y = np.vstack([util.BVPMMJac_1.permute_col(Jbc[:, ode_model.n_par:], ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted), Jmesh])
     J = util.BVPMMJac_1(Jy, Jk, Jbc_y, ode_model.n_dim, ode_model.n_par, colloc_points_unshifted=colloc_points_unshifted)
 
     return J
