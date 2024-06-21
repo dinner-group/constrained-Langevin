@@ -381,6 +381,8 @@ class KaiABC_nondim:
                                  [0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 1., 2., 1., 2., 1.]])
     not_algebraic = 1
     ind_ATP = np.array([7, 11, 12, 17, 20, 23, 26, 30])
+    ind_C1_rxns = np.array([10, 13, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 42, 43, 44, 45, 46, 47, 48, 49])
+    ind_C2_rxns = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15, 17, 18, 38, 39, 40, 41])
     S = np.zeros((n_dim + conservation_law.shape[0], n_par + 1))
 
     S = S.at[0, 0].set(1)
@@ -637,6 +639,58 @@ class KaiABC_log:
         ydot = jax.lax.scan(loop_body, init=1, xs=None, length=self.n_dim)[1]
 
         return ydot
+
+    @jax.jit
+    def jac(self, t, y, par=None, a0=None, ATPfrac=None):
+        return jax.jacfwd(self.f, argnums=1)(t, y, par, a0, ATPfrac)
+
+    @jax.jit
+    def ravel(self):
+        return np.zeros(0)
+
+    def _tree_flatten(self):
+        children = (self.par, self.a0, self.ATPfrac)
+        aux_data = {}
+        return (children, aux_data)
+
+    @classmethod
+    def _tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+class KaiAC_nondim:
+
+    conservation_law = np.array([[1., 1., 1., 1., 1., 1., 1., 1., 0.],
+                                 [0., 1., 0., 1., 0., 1., 0., 1., 1.]])
+    not_algebraic = 1
+    ind_ATP = np.array([7, 11, 12, 17])
+    S = KaiABC_nondim.S[:, KaiABC_nondim.ind_C2_rxns][np.concatenate([np.arange(8), np.array([-1])])]
+    K = np.where(S < 0, -S, 0)
+    n_dim = S.shape[0] - conservation_law.shape[0]
+    n_par = S.shape[1] - 1
+
+    def __init__(self, par, a0=6/35, ATPfrac=1.):
+
+        self.a0 = a0
+        self.ATPfrac = ATPfrac
+        self.par = par
+
+    @jax.jit
+    def f(self, t, y, par=None, a0=None, ATPfrac=None):
+
+        if par is None:
+            par = self.par
+        if a0 is None:
+            a0 = self.a0
+        if ATPfrac is None:
+            ATPfrac = self.ATPfrac
+
+        par = np.pad(par, (1, 0))
+        yfull = np.zeros(self.n_dim + self.conservation_law.shape[0])
+        yfull = yfull.at[0].set(1 - self.conservation_law[0, 1:-1]@y)
+        yfull = yfull.at[1:-1].set(y)
+        yfull = yfull.at[-1].set(a0 - self.conservation_law[1, 1:-1]@y)
+        ydot = self.S@(np.exp(par).at[self.ind_ATP].multiply(ATPfrac) * np.prod(yfull**self.K.T, axis=1))
+        return ydot[1:-1]
 
     @jax.jit
     def jac(self, t, y, par=None, a0=None, ATPfrac=None):
@@ -1181,6 +1235,7 @@ class Cubic_System_2d:
 jax.tree_util.register_pytree_node(KaiODE, KaiODE._tree_flatten, KaiODE._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_log, KaiABC_log._tree_flatten, KaiABC_log._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_nondim, KaiABC_nondim._tree_flatten, KaiABC_nondim._tree_unflatten)
+jax.tree_util.register_pytree_node(KaiAC_nondim, KaiAC_nondim._tree_flatten, KaiAC_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_DAE_nondim, KaiABC_DAE_nondim._tree_flatten, KaiABC_DAE_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(KaiABC_DAE_log_nondim, KaiABC_DAE_log_nondim._tree_flatten, KaiABC_DAE_log_nondim._tree_unflatten)
 jax.tree_util.register_pytree_node(Brusselator, Brusselator._tree_flatten, Brusselator._tree_unflatten)
