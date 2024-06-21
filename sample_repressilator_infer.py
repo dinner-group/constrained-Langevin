@@ -20,6 +20,7 @@ parser.add_argument("-iter", type=int, required=True)
 parser.add_argument("-n_dim", type=int, default=3)
 parser.add_argument("-n_steps", type=int, default=1000000)
 parser.add_argument("-thin", type=int, default=1)
+parser.add_argument("-met", type=bool, default=True)
 argp = parser.parse_args()
 
 data = np.load("repressilator_data.npy")
@@ -121,9 +122,9 @@ l0 = x[2 * q0.size:2 * q0.size + n_constraints]
 n_steps = argp.n_steps
 thin = argp.thin
 
-traj_rp_lc = lgvn.sample((q0, p0, l0, None, None, prng_key), dt=1e-1, n_steps=n_steps, thin=thin, friction=1e-1,
+traj_rp_lc = lgvn.sample((q0, p0, l0, None, None, prng_key), dt=1e-1, n_steps=n_steps, thin=thin, friction=friction,
                                  potential=potential, stepper=lgvn.gOBABO, constraint=resid, jac_constraint=jac, linsol=linear_solver.lq_ortho_proj_bvp, 
-                                 nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, max_newton_iter=100, metropolize=True, reversibility_tol=1e-6, ode_model=rp, 
+                                 nlsol=nonlinear_solver.quasi_newton_bvp_symm_broyden, max_newton_iter=100, metropolize=argp.met, reversibility_tol=1e-6, ode_model=rp, 
                                  colloc_points_unshifted=util.gauss_points_4, print_acceptance=True)
 
 np.save("repressilator_%d_lc_infer_%d_%d.npy"%(n_dim, argp.iter, argp.process), traj_rp_lc)
