@@ -190,39 +190,6 @@ def curvature_poly(y, colloc_points_unshifted=gauss_points_4, quadrature_weights
     out_size = y.shape[1] // colloc_points_unshifted.size
     return jax.lax.fori_loop(0, out_size, loop_body, (np.zeros(out_size), np.zeros(out_size)))
 
-@partial(jax.jit, static_argnums=(1, 2))
-def permute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
-   
-    is_vector = len(x.shape) == 1
-    if is_vector:
-        x = np.expand_dims(x, 0)
-
-    x = np.hstack([x[:, :n_dim], np.concatenate([x[:, n_dim:-n_dim * colloc_points_unshifted.size - n_mesh_intervals + 1].reshape((x.shape[0], n_dim * colloc_points_unshifted.size, n_mesh_intervals - 1), order="F"),
-                                                           np.expand_dims(x[:, -n_mesh_intervals + 1:], 1)], axis=1).reshape((x.shape[0], (n_dim * colloc_points_unshifted.size + 1) * (n_mesh_intervals - 1)), order="F"), 
-                   x[:, -n_dim * colloc_points_unshifted.size - n_mesh_intervals + 1:-n_mesh_intervals + 1]])
-
-    if is_vector:
-        x = np.ravel(x)
-
-    return x
-
-@partial(jax.jit, static_argnums=(1, 2))
-def unpermute_q_mesh(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
-    
-    is_vector = len(x.shape) == 1
-    if is_vector:
-        x = np.expand_dims(x, 0)
-
-    y_and_mesh = x[:, n_dim:-n_dim * colloc_points_unshifted.size].reshape((x.shape[0], n_dim * colloc_points_unshifted.size + 1, n_mesh_intervals - 1), order="F")
-    x = np.hstack([x[:, :n_dim], y_and_mesh[:, :-1, :].reshape((x.shape[0], n_dim * colloc_points_unshifted.size * (n_mesh_intervals - 1)), order="F"), 
-                   x[:, -n_dim * colloc_points_unshifted.size:],
-                   y_and_mesh[:, -1:, :].reshape((x.shape[0], n_mesh_intervals - 1), order="F")])
-
-    if is_vector:
-        x = np.ravel(x)
-
-    return x
-
 @jax.jit
 def compute_householder_reflector(x):
     
@@ -673,6 +640,40 @@ class BVPMMJac:
         else:
             self.Jbc_right = Jbc_right
 
+    @staticmethod
+    @partial(jax.jit, static_argnums=(1, 2))
+    def permute_col(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
+       
+        is_vector = len(x.shape) == 1
+        if is_vector:
+            x = np.expand_dims(x, 0)
+
+        x = np.hstack([x[:, :n_dim], np.concatenate([x[:, n_dim:-n_dim * colloc_points_unshifted.size - n_mesh_intervals + 1].reshape((x.shape[0], n_dim * colloc_points_unshifted.size, n_mesh_intervals - 1), order="F"),
+                                                               np.expand_dims(x[:, -n_mesh_intervals + 1:], 1)], axis=1).reshape((x.shape[0], (n_dim * colloc_points_unshifted.size + 1) * (n_mesh_intervals - 1)), order="F"), 
+                       x[:, -n_dim * colloc_points_unshifted.size - n_mesh_intervals + 1:-n_mesh_intervals + 1]])
+
+        if is_vector:
+            x = np.ravel(x)
+
+        return x
+
+    @staticmethod
+    @partial(jax.jit, static_argnums=(1, 2))
+    def unpermute_col(x, n_dim, n_mesh_intervals, colloc_points_unshifted=gauss_points_4):
+        
+        is_vector = len(x.shape) == 1
+        if is_vector:
+            x = np.expand_dims(x, 0)
+
+        y_and_mesh = x[:, n_dim:-n_dim * colloc_points_unshifted.size].reshape((x.shape[0], n_dim * colloc_points_unshifted.size + 1, n_mesh_intervals - 1), order="F")
+        x = np.hstack([x[:, :n_dim], y_and_mesh[:, :-1, :].reshape((x.shape[0], n_dim * colloc_points_unshifted.size * (n_mesh_intervals - 1)), order="F"), 
+                       x[:, -n_dim * colloc_points_unshifted.size:],
+                       y_and_mesh[:, -1:, :].reshape((x.shape[0], n_mesh_intervals - 1), order="F")])
+
+        if is_vector:
+            x = np.ravel(x)
+
+        return x
 
     @jax.jit
     def todense(self):
@@ -701,7 +702,7 @@ class BVPMMJac:
             return (i + 1, Jy_dense, Jm_dense), _
 
         Jy_mesh_dense = np.hstack(jax.lax.scan(loop_body, init=(1, Jy_dense, Jm_dense), xs=None, length=self.Jy.shape[0] - 2)[0][1:])
-        return np.hstack([Jk[:, :self.n_par], np.vstack([Jy_mesh_dense, unpermute_q_mesh(self.Jmesh, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)]), Jk[:, self.n_par:]])
+        return np.hstack([Jk[:, :self.n_par], np.vstack([Jy_mesh_dense, self.unpermute_col(self.Jmesh, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)]), Jk[:, self.n_par:]])
 
     @jax.jit
     def left_multiply(self, v):
@@ -734,7 +735,7 @@ class BVPMMJac:
             return (i + 1, out), _
 
         out = jax.lax.scan(loop_body, init=(1, out), xs=None, length=self.Jy.shape[0] - 2)[0][1]
-        out = out.at[:, self.n_par:self.n_par - self.Jk.shape[1]].set(unpermute_q_mesh(out[:, self.n_par:self.n_par - self.Jk.shape[1]], self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted))
+        out = out.at[:, self.n_par:self.n_par - self.Jk.shape[1]].set(self.unpermute_col(out[:, self.n_par:self.n_par - self.Jk.shape[1]], self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted))
 
         if is_vector:
             out = out.ravel()
@@ -749,7 +750,7 @@ class BVPMMJac:
             v = np.expand_dims(v, 1)
 
         vy = v[self.n_par:self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]]
-        vy = permute_q_mesh(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
+        vy = self.permute_col(vy.T, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted).T
         vk = np.concatenate([v[:self.n_par], v[self.n_par + self.Jy.shape[0] * self.Jy.shape[1] + self.n_dim + self.Jmesh.shape[0]:]])
         out = np.pad(self.Jk@vk, ((0, self.shape[0] - self.Jk.shape[0]), (0, 0)))
         out = out.at[-self.Jmesh.shape[0]:].add(self.Jmesh@vy)
@@ -780,7 +781,7 @@ class BVPMMJac:
     def right_multiply_diag(self, D):
 
         Dy = D[self.n_par:self.n_par - self.Jk.shape[1]]
-        Dy = permute_q_mesh(Dy, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)
+        Dy = self.permute_col(Dy, self.n_dim, self.Jy.shape[0], self.colloc_points_unshifted)
         Dk = np.concatenate([D[:self.n_par], D[self.n_par - self.Jk.shape[1]:]])
 
         Jy = self.Jy.at[0, :, :self.n_dim].multiply(Dy[:self.n_dim])
@@ -954,7 +955,7 @@ class BVPMMJac_LQ:
         Q_0 = self.Q_c[-Q_c_index - Q_0_dim**2:-Q_c_index].reshape((Q_0_dim, Q_0_dim))
         v = v.at[:stop].set(Q_0@v[:stop])
 
-        v = unpermute_q_mesh(v.T, self.n_dim, self.R_c.shape[0], self.colloc_points_unshifted).T
+        v = BVPMMJac.unpermute_col(v.T, self.n_dim, self.R_c.shape[0], self.colloc_points_unshifted).T
 
         if is_vector:
             v = v.ravel()

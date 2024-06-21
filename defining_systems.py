@@ -258,7 +258,7 @@ def periodic_bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_
     Jmesh_y = jax.jacrev(bvp_mm_mesh_resid, argnums=0)(y.ravel(order="F"), mesh_points, ode_model, colloc_points_unshifted, n_smooth)
     Jmesh_m = jax.jacrev(bvp_mm_mesh_resid, argnums=1)(y.ravel(order="F"), mesh_points, ode_model, colloc_points_unshifted, n_smooth)[:, 1:-1]
     Jmesh = np.hstack([Jmesh_y, Jmesh_m])
-    Jmesh = util.permute_q_mesh(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
+    Jmesh = util.BVPMMJac.permute_col(Jmesh, ode_model.n_dim, n_mesh_intervals, colloc_points_unshifted)
     Jy, Jk = jax.lax.scan(loop_body, init=0, xs=None, length=n_mesh_intervals)[1]
     Jk = np.vstack(Jk)
 
