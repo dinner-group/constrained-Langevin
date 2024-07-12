@@ -62,7 +62,7 @@ def fully_extended_hopf_2n_log(q, ode_model, *args):
     return fully_extended_hopf_2n(q, ode_model, *args)
 
 @jax.jit
-def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4, dd=None):
+def bvp_colloc_resid_interval(y, k, integration_time, interval_endpoints, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4, dd=None):
 
     colloc_points = interval_endpoints[0] + (1 + colloc_points_unshifted) * (interval_endpoints[1] - interval_endpoints[0]) / 2
     node_points = np.linspace(*interval_endpoints, colloc_points.size + 1)
@@ -281,14 +281,14 @@ def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_
     interval_widths = q[ode_model.n_par + n_points * ode_model.n_dim:ode_model.n_par + n_points * ode_model.n_dim + n_mesh_intervals]
     mesh_points = np.cumsum(interval_widths)
     mesh_points = np.pad(mesh_points, (1, 0))
-    #mesh_eqs = bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smoth)
+    #mesh_eqs = bvp_mm_mesh_resid(y, mesh_points, ode_model, colloc_points_unshifted, n_smooth)
 
     def loop_body(i, _):
         y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
         interval_endpoints = np.array([0., 1])
         node_points = np.linspace(*interval_endpoints, colloc_points_unshifted.size + 1)
         dd = util.divided_difference(node_points, y_i)
-        r_i = bvp_colloc_resid_interval(y_i, k, interval_widths[i], interval_endpoints, ode_model, colloc_points_unshifted)
+        r_i = bvp_colloc_resid_interval(y_i, k, interval_widths[i], interval_endpoints, ode_model, colloc_points_unshifted, quadrature_weights)
         mesh_mass_interval = bvp_mm_mesh_resid_curvature_interval(y_i, k, interval_widths[i], ode_model, colloc_points_unshifted, quadrature_weights, dd) 
         return i + 1, (r_i, mesh_mass_interval)
 
@@ -298,7 +298,7 @@ def bvp_mm_colloc_resid(q, ode_model, colloc_points_unshifted=util.gauss_points_
     return resid
 
 @partial(jax.jit, static_argnames=("n_mesh_intervals", "n_smooth", "boundary_condition"))
-def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
+def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4, quadrature_weights=util.gauss_weights_4, boundary_condition=periodic_boundary_condition, *args, n_mesh_intervals=60, n_smooth=4, **kwargs):
 
     k = q[:ode_model.n_par]
     n_points = n_mesh_intervals * colloc_points_unshifted.size + 1
@@ -309,9 +309,9 @@ def bvp_mm_colloc_jac(q, ode_model, colloc_points_unshifted=util.gauss_points_4,
 
     def loop_body(i, _):
         y_i = jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (ode_model.n_dim, colloc_points_unshifted.size + 1))
-        Jy_i = jax.jacfwd(bvp_colloc_resid_interval, argnums=0)(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted)
-        Jk_i = jax.jacfwd(bvp_colloc_resid_interval, argnums=1)(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted)
-        Jm_i = jax.jacfwd(bvp_colloc_resid_interval, argnums=2)(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted)
+        Jy_i = jax.jacfwd(bvp_colloc_resid_interval, argnums=0)(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted, quadrature_weights)
+        Jk_i = jax.jacfwd(bvp_colloc_resid_interval, argnums=1)(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted, quadrature_weights)
+        Jm_i = jax.jacfwd(bvp_colloc_resid_interval, argnums=2)(y_i, k, interval_widths[i], np.array([0., 1]), ode_model, colloc_points_unshifted, quadrature_weights)
         Jy_i = Jy_i.reshape((colloc_points_unshifted.size * ode_model.n_dim, (colloc_points_unshifted.size + 1) * ode_model.n_dim), order="F")
 
         return i + 1, (np.hstack([Jy_i[:, :ode_model.n_dim], np.expand_dims(Jm_i, 1), Jy_i[:, ode_model.n_dim:]]), Jk_i)
