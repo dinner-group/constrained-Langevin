@@ -182,7 +182,7 @@ def curvature_poly(y, colloc_points_unshifted=gauss_points_4, quadrature_weights
     def loop_body(i, carry):
         
         ynorm, ycurvature = carry
-        poly, poly_deriv2 = curvature_interval(jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (y.shape[0], colloc_points_unshifted.size + 1)), colloc_points_unshifted)
+        poly, poly_deriv2 = curvature_interval_poly(jax.lax.dynamic_slice(y, (0, i * colloc_points_unshifted.size), (y.shape[0], colloc_points_unshifted.size + 1)), colloc_points_unshifted)
         ynorm = ynorm.at[i].set(np.linalg.norm(poly, axis=0)@quadrature_weights)
         ycurvature = ycurvature.at[i].set(np.linalg.norm(poly_deriv2, axis=0)@quadrature_weights)
         return ynorm, ycurvature
