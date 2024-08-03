@@ -472,7 +472,7 @@ def brusselator_rhs(q):
     return br.f(0., np.exp(q[model.Brusselator.n_par:model.Brusselator.n_par + model.Brusselator.n_dim]))
 
 @jax.jit
-def brusselator_hb_3n(q):
+def brusselator_hb_3n(q, *args, **kwargs):
     
     br = model.Brusselator(np.exp(q[:model.Brusselator.n_par]))
     
