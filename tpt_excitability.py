@@ -6,17 +6,17 @@ from functools import partial
 import util
 import os
 import gurobipy as gurobi
+import model
+import scipy
 # import sparseqr
 jax.config.update("jax_enable_x64", True)
 env = gurobi.Env(empty=True)
 env.setParam("OutputFlag", 0)
 env.start()
 
-def compute_mean_excursion_size(generator, fp, mask):
+def compute_mean_excursion_size(generator, d, mask):
     
     ind = np.arange(generator.shape[0])[mask]
-    xyflat = np.array(xy).reshape((2, xy[0].shape[0] * xy[0].shape[1])).T
-    d = np.linalg.norm(xyflat - fp, axis=1)
     generator = generator.tocoo().tocsr()
     for i in ind:
         generator.data[generator.indptr[i]:generator.indptr[i + 1]] *= mask[generator.indices[generator.indptr[i]:generator.indptr[i + 1]]]
@@ -31,29 +31,52 @@ def compute_mean_excursion_size(generator, fp, mask):
         return np.array(opt.x)
     else:
         return np.full(d.shape, np.nan)
+    
+def compute_mean_excursion_size_q(generator, d, mask, n_points):
+    
+    qs = []
+    for c in np.linspace(0, d.max(), n_points):
+        mask_r = d > c
+        qs.append(compute_committor(generator, mask, mask_r))
+    qs = np.array(qs)
+    maxdist = jax.scipy.integrate.trapezoid(qs, axis=0, x=np.linspace(0, d.max(), n_points))
+    return maxdist
 
-def compute_mean_excursion_size_noabsorb(generator, fp, mask, committor):
+def compute_mean_excursion_size_q_noabsorb(generator, d, mask_A, mask_B, n_points, q0):
     
-    ind = np.arange(generator.shape[0])[mask]
-    xyflat = np.array(xy).reshape((2, xy[0].shape[0] * xy[0].shape[1])).T
-    d = np.linalg.norm(xyflat - fp, axis=1) * committor
-    generator = generator.tocoo().tocsr()
-    for i in ind:
-        generator.data[generator.indptr[i]:generator.indptr[i + 1]] *= mask[generator.indices[generator.indptr[i]:generator.indptr[i + 1]]]
-    # gd = generator.diagonal()
-    # generator = generator.multiply(np.expand_dims(committor, 1))
-    # generator.setdiag(gd)
-    opt = gurobi.Model("mes", env=env)
-    x = opt.addMVar(shape=d.shape)
-    opt.addConstr(x >= numpy.array(d), "lower_bound")
-    opt.addConstr(generator@x <= numpy.zeros(generator.shape[0]), "generator_equation")
-    opt.setObjective(numpy.ones(generator.shape[1])@x, gurobi.GRB.MINIMIZE)
-    opt.optimize()
+    qs = []
+    if q0 is None:
+        q0 = compute_committor(generator, mask_A, mask_B)
+    for c in np.linspace(0, d.max(), n_points):
+        mask_r = d > c
+        qs.append(compute_committor(generator, mask_B + (mask_A * ~mask_r), mask_r, q0))
+    qs = np.array(qs)
+    maxdist = jax.scipy.integrate.trapezoid(qs, axis=0, x=np.linspace(0, d.max(), n_points))
+    return maxdist
     
-    if opt.status == 2:
-        return np.array(opt.x)
-    else:
-        return np.full(d.shape, np.nan)
+@jax.jit
+def int_f_x(x0, x1, y, par, **kwargs):
+    K = model.Cubic_System_2d.K.at[0].add(1)
+    par = np.pad(par, (1, 0), constant_values=1)
+    par = par.reshape((2, par.size // 2))
+    par = par.at[1].multiply(1 / K[0])
+    v0 = np.array([x0, y])
+    a0 = par@np.prod(v0**K.T, axis=1)
+    v1 = np.array([x1, y])
+    a1 = par@np.prod(v1**K.T, axis=1)
+    return a1[1] - a0[1]
+    
+@jax.jit
+def int_f_y(y0, y1, x, par, **kwargs):
+    K = model.Cubic_System_2d.K.at[1].add(1)
+    par = np.pad(par, (1, 0), constant_values=(1))
+    par = par.reshape((2, par.size // 2))
+    par = par.at[0].multiply(1 / K[1])
+    v0 = np.array([x, y0])
+    a0 = par@np.prod(v0**K.T, axis=1)
+    v1 = np.array([x, y1])
+    a1 = par@np.prod(v1**K.T, axis=1)
+    return a1[0] - a0[0]
     
 @partial(jax.jit, static_argnames=("mesh_shape", "int_f_x", "int_f_y"))
 def discretize_generator(drift_pars, diffusion_constant, mesh_coords, mesh_shape, int_f_x=int_f_x, int_f_y=int_f_y, **kwargs):
@@ -158,9 +181,11 @@ def discretize_generator(drift_pars, diffusion_constant, mesh_coords, mesh_shape
     
     return J, xy, mesh_spacing
 
-def compute_committor(generator, mask_A, mask_B):
-    q0 = scipy.sparse.linalg.spsolve(generator[~(mask_A + mask_B)][:, ~(mask_A + mask_B)], -generator[~(mask_A + mask_B)][:, mask_B].sum(axis=1))
-    q = np.ones(generator.shape[0])
+def compute_committor(generator, mask_A, mask_B, bc=None):
+    if bc is None:
+        bc = np.ones(generator.shape[0])
+    q0 = scipy.sparse.linalg.spsolve(generator[~(mask_A + mask_B)][:, ~(mask_A + mask_B)], -generator[~(mask_A + mask_B)][:, mask_B]@bc[mask_B])
+    q = bc
     q = q.at[~(mask_A + mask_B)].set(q0)
     q = q.at[mask_A].set(0)
     return q
