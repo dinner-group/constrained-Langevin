@@ -57,12 +57,15 @@ def log_probability(k, rp_dim):
     return E
 
 @partial(jax.jit, static_argnames=("rp_dim",))
-def repressilator_log_emcee_potential(k, rp_dim):
+def repressilator_log_emcee_potential(q, rp_dim):
 
+    k = q[:-rp_dim]
+    y0 = q[-rp_dim:]
     rp = model.Repressilator_log_n(k, rp_dim)
     std = 5e-2
     t_eval = np.linspace(25.05, 30, 100)
     E = 0
+    E -= 100 * np.where(np.abs(y0) > 7, (np.abs(y0) - 7)**2, 0.).sum()
     E -= 100 * np.where(k[-rp_dim:] < 0, k[-rp_dim:]**2, 0.).sum()
     E -= 100 * np.where(k[-rp_dim:] > 10, (k[-rp_dim:] - 10)**2, 0.).sum()
     E -= 100 * np.where(k[:-rp_dim] > 5, (k[:-rp_dim] - 5)**2, 0.).sum()
@@ -70,9 +73,9 @@ def repressilator_log_emcee_potential(k, rp_dim):
     dat = data_period_average
 
     term = diffrax.ODETerm(rp.f)
-    solver = diffrax.Kvaerno4()
+    solver = diffrax.Tsit5()
     stepsize_controller = diffrax.PIDController(rtol=1e-6, atol=1e-6)
-    out = diffrax.diffeqsolve(term, solver, 0, t_eval[-1], None, np.log(np.ones(rp_dim).at[-2].add(0.2)),
+    out = diffrax.diffeqsolve(term, solver, 0, t_eval[-1], None, y0,
                               stepsize_controller=stepsize_controller, max_steps=8192, throw=False, args=k, saveat=diffrax.SaveAt(ts=t_eval))
 
     arclength = jax.scipy.integrate.trapezoid(np.linalg.norm(jax.vmap(rp.f, (None, 0, None))(0., out.ys, k)[:, :1], axis=1), x=t_eval)
