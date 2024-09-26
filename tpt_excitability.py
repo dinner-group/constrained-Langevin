@@ -8,6 +8,8 @@ import os
 import gurobipy as gurobi
 import model
 import scipy
+import psutil
+import sparse_dot_mkl
 # import sparseqr
 jax.config.update("jax_enable_x64", True)
 env = gurobi.Env(empty=True)
@@ -34,24 +36,37 @@ def compute_mean_excursion_size(generator, d, mask):
     
 def compute_mean_excursion_size_q(generator, d, mask, n_points):
     
-    qs = []
-    for c in np.linspace(0, d.max(), n_points):
-        mask_r = d > c
-        qs.append(compute_committor(generator, mask, mask_r))
-    qs = np.array(qs)
-    maxdist = jax.scipy.integrate.trapezoid(qs, axis=0, x=np.linspace(0, d.max(), n_points))
+    r = np.linspace(0, d.max(), n_points)
+    q_prev = ~mask + 0.
+    maxdist = np.zeros_like(q_prev)
+    r_prev = 0.
+
+    for i in range(1, r.size):
+        mask_r = d > r[i]
+        q_i = compute_committor(generator, mask, mask_r)
+        maxdist += maxdist + (r[i] - r_prev) * (q_i + q_prev) / 2
+        r_prev = r[i]
+        q_prev = q_i
+
     return maxdist
 
 def compute_mean_excursion_size_q_noabsorb(generator, d, mask_A, mask_B, n_points, q0):
     
-    qs = []
     if q0 is None:
         q0 = compute_committor(generator, mask_A, mask_B)
-    for c in np.linspace(0, d.max(), n_points):
-        mask_r = d > c
-        qs.append(compute_committor(generator, mask_B + (mask_A * ~mask_r), mask_r, q0))
-    qs = np.array(qs)
-    maxdist = jax.scipy.integrate.trapezoid(qs, axis=0, x=np.linspace(0, d.max(), n_points))
+
+    r = np.linspace(0, d.max(), n_points)
+    q_prev = q0
+    maxdist = np.zeros_like(q_prev)
+    r_prev = 0.
+
+    for i in range(1, r.size):
+        mask_r = d > r[i]
+        q_i = compute_committor(generator, mask_B + (mask_A * ~mask_r), mask_r, q0)
+        maxdist += (r[i] - r_prev) * (q_i + q_prev) / 2
+        r_prev = r[i]
+        q_prev = q_i
+
     return maxdist
     
 @jax.jit
@@ -77,11 +92,21 @@ def int_f_y(y0, y1, x, par, **kwargs):
     v1 = np.array([x, y1])
     a1 = par@np.prod(v1**K.T, axis=1)
     return a1[0] - a0[0]
-    
+   
+@partial(jax.jit, static_argnames=("mesh_shape"))
+def compute_mesh(mesh_bounds, mesh_shape):
+    mesh_x0, mesh_x1, mesh_y0, mesh_y1 = mesh_bounds
+    mesh_spacing = ((mesh_x1 - mesh_x0) / mesh_shape[0], (mesh_y1 - mesh_y0) / mesh_shape[1])
+    mesh_coords = np.meshgrid(np.linspace(mesh_x0 + mesh_spacing[0] / 2, mesh_x1 - mesh_spacing[0] / 2, mesh_shape[0]), 
+                     np.linspace(mesh_y1 + mesh_spacing[1] / 2, mesh_y0 - mesh_spacing[1] / 2, mesh_shape[1]))
+    xy = np.meshgrid(np.linspace(mesh_x0 + mesh_spacing[0] / 2, mesh_x1 - mesh_spacing[0] / 2, mesh_shape[0]), 
+                 np.linspace(mesh_y1 + mesh_spacing[1] / 2, mesh_y0 - mesh_spacing[1] / 2, mesh_shape[1]))
+    return xy, mesh_spacing
+
 @partial(jax.jit, static_argnames=("mesh_shape", "int_f_x", "int_f_y"))
-def discretize_generator(drift_pars, diffusion_constant, mesh_coords, mesh_shape, int_f_x=int_f_x, int_f_y=int_f_y, **kwargs):
+def discretize_generator(drift_pars, diffusion_constant, mesh_bounds, mesh_shape, int_f_x=int_f_x, int_f_y=int_f_y, **kwargs):
     
-    mesh_x0, mesh_x1, mesh_y0, mesh_y1 = mesh_coords
+    mesh_x0, mesh_x1, mesh_y0, mesh_y1 = mesh_bounds
     mesh_spacing = ((mesh_x1 - mesh_x0) / mesh_shape[0], (mesh_y1 - mesh_y0) / mesh_shape[1])
     xy = np.meshgrid(np.linspace(mesh_x0 + mesh_spacing[0] / 2, mesh_x1 - mesh_spacing[0] / 2, mesh_shape[0]), 
                      np.linspace(mesh_y1 + mesh_spacing[1] / 2, mesh_y0 - mesh_spacing[1] / 2, mesh_shape[1]))
@@ -114,14 +139,14 @@ def discretize_generator(drift_pars, diffusion_constant, mesh_coords, mesh_shape
         dat = dat.at[6].add(np.where(fy > 0, -fy, 0))
         
         #diffusion
-        dat = dat.at[0].add(-diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[1].add(diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[0].add(-diffusion_constant * mesh_spacing[0] / mesh_spacing[1])
-        dat = dat.at[2].add(diffusion_constant * mesh_spacing[0] / mesh_spacing[1])
-        dat = dat.at[3].add(diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[4].add(-diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[5].add(diffusion_constant * mesh_spacing[0] / mesh_spacing[1])
-        dat = dat.at[6].add(-diffusion_constant * mesh_spacing[0] / mesh_spacing[1])
+        dat = dat.at[0].add(-diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[1].add(diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[0].add(-diffusion_constant[1] * mesh_spacing[0] / mesh_spacing[1])
+        dat = dat.at[2].add(diffusion_constant[1] * mesh_spacing[0] / mesh_spacing[1])
+        dat = dat.at[3].add(diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[4].add(-diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[5].add(diffusion_constant[1] * mesh_spacing[0] / mesh_spacing[1])
+        dat = dat.at[6].add(-diffusion_constant[1] * mesh_spacing[0] / mesh_spacing[1])
         
         return (i + 1, j, k + 1), (dat, ind)
     
@@ -162,10 +187,10 @@ def discretize_generator(drift_pars, diffusion_constant, mesh_coords, mesh_shape
         dat = dat.at[2].add(np.where(fx < 0, -fx, 0))
         dat = dat.at[3].add(np.where(fx < 0, fx, 0))
                 
-        dat = dat.at[0].add(-diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[1].add(diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[2].add(diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
-        dat = dat.at[3].add(-diffusion_constant * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[0].add(-diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[1].add(diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[2].add(diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
+        dat = dat.at[3].add(-diffusion_constant[0] * mesh_spacing[1] / mesh_spacing[0])
                 
         return (i + 1, k + 1), (dat, ind)
     
@@ -184,6 +209,7 @@ def discretize_generator(drift_pars, diffusion_constant, mesh_coords, mesh_shape
 def compute_committor(generator, mask_A, mask_B, bc=None):
     if bc is None:
         bc = np.ones(generator.shape[0])
+
     q0 = scipy.sparse.linalg.spsolve(generator[~(mask_A + mask_B)][:, ~(mask_A + mask_B)], -generator[~(mask_A + mask_B)][:, mask_B]@bc[mask_B])
     q = bc
     q = q.at[~(mask_A + mask_B)].set(q0)

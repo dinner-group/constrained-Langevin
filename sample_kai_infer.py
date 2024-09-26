@@ -187,8 +187,8 @@ def kai_bvp_potential_mm_4cond(q, ode_models, colloc_points_unshifted=None, quad
     k = q[:ode_models[0].n_par]
     start = ode_models[0].n_par
     E = np.where(np.abs(k) > 7, 100 * (np.abs(k) - 7)**2 / 2, 0).sum()
-    E += np.where(np.abs(k[3] - k[1]) > 1, 4 * (np.abs(k[3] - k[1]) - 1)**2, 0)
-    E += np.where(np.abs(k[2] - k[0]) > 1, 4 * (np.abs(k[2] - k[0]) - 1)**2, 0)
+    #E += np.where(np.abs(k[3] - k[1]) > 1, 4 * (np.abs(k[3] - k[1]) - 1)**2, 0)
+    #E += np.where(np.abs(k[2] - k[0]) > 1, 4 * (np.abs(k[2] - k[0]) - 1)**2, 0)
     
     for i in range(len(ode_models)):
 
@@ -363,8 +363,8 @@ def kai_bvp_potential_mm_4cond_1(q, ode_models, colloc_points_unshifted=None, qu
     k = q[:ode_models[0].n_par]
     start = ode_models[0].n_par
     E = np.where(np.abs(k) > 7, 100 * (np.abs(k) - 7)**2 / 2, 0).sum()
-    E += np.where(np.abs(k[3] - k[1]) > 1, 4 * (np.abs(k[3] - k[1]) - 1)**2, 0)
-    E += np.where(np.abs(k[2] - k[0]) > 1, 4 * (np.abs(k[2] - k[0]) - 1)**2, 0)
+    #E += np.where(np.abs(k[3] - k[1]) > 1, 4 * (np.abs(k[3] - k[1]) - 1)**2, 0)
+    #E += np.where(np.abs(k[2] - k[0]) > 1, 4 * (np.abs(k[2] - k[0]) - 1)**2, 0)
     
     for i in range(len(ode_models)):
 
